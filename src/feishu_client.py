@@ -1,5 +1,6 @@
 """Feishu (飞书) API client — document management, media upload."""
 
+import json
 import logging
 import time
 from typing import Optional
@@ -124,6 +125,16 @@ class FeishuClient:
 
         for i in range(0, len(blocks), MAX_PER_BATCH):
             batch = blocks[i:i + MAX_PER_BATCH]
+            logger.info(
+                "Appending batch %d/%d (%d blocks) to document %s, parent %s",
+                i // MAX_PER_BATCH + 1,
+                (len(blocks) + MAX_PER_BATCH - 1) // MAX_PER_BATCH,
+                len(batch),
+                document_id,
+                parent_block_id,
+            )
+            logger.info("First block sample: %s",
+                        json.dumps(batch[0], ensure_ascii=False)[:500])
             data = self._request(
                 "POST",
                 f"/docx/v1/documents/{document_id}/blocks/{parent_block_id}/children",

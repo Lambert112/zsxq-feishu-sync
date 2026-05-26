@@ -67,6 +67,9 @@ def get_month_key(create_time_str: str) -> tuple[int, int]:
 def build_text_elements(text: str) -> list[dict]:
     text = text.replace("<br>", "\n").replace("<br/>", "\n")
     text = text.replace("&nbsp;", " ")
+    # Feishu text_run content limit is 5000 chars
+    if len(text) > 5000:
+        text = text[:5000]
     return [{"text_run": {"content": text}}]
 
 
@@ -126,8 +129,11 @@ def format_topic_to_blocks(
     # Divider
     blocks.append(build_divider())
 
-    # Title
+    # Title — strip newlines (headings are single-line)
     title = topic.get("title", "") or _extract_title_from_talk(topic)
+    title = title.replace("\n", " ").replace("\r", " ").strip()
+    if not title:
+        title = "无标题"
     blocks.append(build_h2(title))
 
     # Publish time
@@ -139,10 +145,10 @@ def format_topic_to_blocks(
     if text:
         blocks.append(build_text(text))
 
-    # Hidden dedup marker
+    # Dedup marker
     topic_id = topic.get("topic_id", "")
     if topic_id:
-        blocks.append(build_text(f"<!-- zsxq_topic_id: {topic_id} -->"))
+        blocks.append(build_text(f"[zsxq_topic_id: {topic_id}]"))
 
     temp_dir = config.TEMP_DIR
 
