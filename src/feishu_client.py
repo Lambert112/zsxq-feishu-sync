@@ -137,8 +137,9 @@ class FeishuClient:
                         json.dumps(batch[0], ensure_ascii=False)[:500])
             data = self._request(
                 "POST",
-                f"/docx/v1/documents/{document_id}/blocks/{parent_block_id}/children",
-                body={"children": batch},
+                f"/docx/v1/documents/{document_id}/blocks/{parent_block_id}/children"
+                f"?document_revision_id=-1",
+                body={"children": batch, "index": -1},
             )
             created.extend(data.get("children", []))
             if i + MAX_PER_BATCH < len(blocks):

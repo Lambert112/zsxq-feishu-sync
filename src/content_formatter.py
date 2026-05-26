@@ -70,7 +70,7 @@ def build_text_elements(text: str) -> list[dict]:
     # Feishu text_run content limit is 5000 chars
     if len(text) > 5000:
         text = text[:5000]
-    return [{"text_run": {"content": text}}]
+    return [{"text_run": {"content": text, "text_element_style": {}}}]
 
 
 def build_h1(text: str) -> dict:
@@ -95,7 +95,7 @@ def build_text(text: str) -> dict:
 
 
 def build_divider() -> dict:
-    return {"block_type": 22}
+    return {"block_type": 22, "divider": {}}
 
 
 def build_image(file_token: str) -> dict:
