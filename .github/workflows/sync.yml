@@ -44,7 +44,7 @@ jobs:
         id: cache-restore
         with:
           path: sync_state.json
-          key: zsxq-sync-state-${{ secrets.ZSXQ_GROUP_ID }}
+          key: zsxq-sync-state-${{ secrets.ZSXQ_GROUP_ID }}-${{ github.run_id }}
           restore-keys: |
             zsxq-sync-state-${{ secrets.ZSXQ_GROUP_ID }}-
 
@@ -65,7 +65,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: sync_state.json
-          key: zsxq-sync-state-${{ secrets.ZSXQ_GROUP_ID }}
+          key: zsxq-sync-state-${{ secrets.ZSXQ_GROUP_ID }}-${{ github.run_id }}
 
       - name: Notify failure
         if: failure()
