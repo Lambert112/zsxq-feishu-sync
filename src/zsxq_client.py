@@ -49,8 +49,10 @@ class ZsxqClient:
         )
         resp.raise_for_status()
 
-        # Parse SSE: collect data lines from the last event
-        text = resp.text
+        # Parse SSE: collect data lines. Use resp.content and decode
+        # explicitly as UTF-8 because the SSE Content-Type may not
+        # declare charset, and resp.text defaults to ISO-8859-1.
+        text = resp.content.decode("utf-8")
         data_payload = ""
         for block in text.split("\n\n"):
             block = block.strip()
