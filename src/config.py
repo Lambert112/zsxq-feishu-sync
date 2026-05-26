@@ -12,7 +12,7 @@ def _env(name: str, default: str = "") -> str:
 def _validate() -> None:
     """Check all required env vars are set. Call once at startup."""
     required = [
-        "ZSXQ_COOKIE",
+        "ZSXQ_MCP_API_KEY",
         "ZSXQ_GROUP_ID",
         "FEISHU_APP_ID",
         "FEISHU_APP_SECRET",
@@ -24,14 +24,9 @@ def _validate() -> None:
         sys.exit(1)
 
 
-# ZSXQ
-ZSXQ_COOKIE: str = _env("ZSXQ_COOKIE")
+# ZSXQ (official MCP API)
+ZSXQ_MCP_API_KEY: str = _env("ZSXQ_MCP_API_KEY")
 ZSXQ_GROUP_ID: str = _env("ZSXQ_GROUP_ID")
-ZSXQ_BASE_URL = "https://api.zsxq.com/v2"
-ZSXQ_SECRET = "zsxqapi2020"
-ZSXQ_APP_VERSION = "2.57.0"
-ZSXQ_PLATFORM = "web"
-ZSXQ_REQUEST_DELAY = 2
 
 # Feishu
 FEISHU_APP_ID: str = _env("FEISHU_APP_ID")

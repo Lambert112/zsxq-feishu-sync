@@ -1,11 +1,10 @@
-"""ZSXQ (知识星球) API client — fetch topics, download attachments."""
+"""ZSXQ client via official MCP endpoint — no cookies, no scraping."""
 
-import hashlib
+import json
 import logging
 import os
 import time
 from typing import Optional
-from urllib.parse import urlencode, urlparse, parse_qs
 
 import requests
 
@@ -15,163 +14,192 @@ logger = logging.getLogger(__name__)
 
 
 class ZsxqClient:
-    """Client for ZSXQ internal API."""
+    """Client for ZSXQ via MCP (JSON-RPC over HTTP/SSE)."""
 
     def __init__(self):
-        self.cookie = config.ZSXQ_COOKIE
+        self.mcp_url = (
+            f"https://mcp.zsxq.com/topic/mcp?api_key={config.ZSXQ_MCP_API_KEY}"
+        )
         self.group_id = config.ZSXQ_GROUP_ID
-        self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/131.0.0.0 Safari/537.36"
-            ),
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Referer": "https://wx.zsxq.com/",
-            "Origin": "https://wx.zsxq.com",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-site",
-            "Cookie": self.cookie,
+        self._req_id = 0
+        self._tools: dict[str, dict] = {}
+
+    # ------------------------------------------------------------------
+    # MCP protocol (SSE transport)
+    # ------------------------------------------------------------------
+
+    def _next_id(self) -> int:
+        self._req_id += 1
+        return self._req_id
+
+    def _rpc(self, method: str, params: Optional[dict] = None) -> dict:
+        """Send a JSON-RPC request and parse the SSE response."""
+        payload = {
+            "jsonrpc": "2.0",
+            "id": self._next_id(),
+            "method": method,
+            "params": params or {},
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+        }
+        resp = requests.post(
+            self.mcp_url, json=payload, headers=headers, timeout=30,
+        )
+        resp.raise_for_status()
+
+        # SSE format: lines are "event: ..." or "data: ..."
+        data_payload = None
+        for line in resp.iter_lines(decode_unicode=True):
+            if line and line.startswith("data: "):
+                data_payload = line[6:]  # strip "data: " prefix
+        if data_payload is None:
+            raise ZsxqError(-1, f"Empty SSE response for {method}")
+        result = json.loads(data_payload)
+        if "error" in result:
+            err = result["error"]
+            raise ZsxqError(err.get("code", -1), err.get("message", "MCP error"))
+        return result.get("result", {})
+
+    def _init(self) -> None:
+        """Initialize MCP session and discover tools."""
+        if self._tools:
+            return  # already initialized
+
+        self._rpc("initialize", {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "zsxq-sync", "version": "1.0.0"},
         })
 
-    # ------------------------------------------------------------------
-    # Signature
-    # ------------------------------------------------------------------
-
-    def _sign(self, path: str, params: dict) -> tuple[str, str]:
-        """Generate X-Signature and X-Timestamp for a request."""
-        ts_ms = str(int(time.time() * 1000))
-        all_params = {**params, "timestamp": ts_ms}
-        sorted_str = "&".join(
-            f"{k}={v}" for k, v in sorted(all_params.items())
-        )
-        sign_str = f"{path}&{sorted_str}&{config.ZSXQ_SECRET}&{ts_ms}"
-        signature = hashlib.md5(sign_str.encode()).hexdigest()
-        return signature, ts_ms
+        result = self._rpc("tools/list")
+        for tool in result.get("tools", []):
+            self._tools[tool["name"]] = tool
+        logger.info("MCP tools discovered: %s", list(self._tools.keys()))
 
     # ------------------------------------------------------------------
-    # HTTP helpers
+    # High-level API
     # ------------------------------------------------------------------
 
-    def _get(self, path: str, params: Optional[dict] = None) -> dict:
-        params = params or {}
-        params.setdefault("app_version", config.ZSXQ_APP_VERSION)
-        params.setdefault("platform", config.ZSXQ_PLATFORM)
-
-        sig, ts = self._sign(path, params)
-
-        headers = {
-            "X-Signature": sig,
-            "X-Timestamp": ts,
-            "X-Version": config.ZSXQ_APP_VERSION,
-        }
-
-        url = f"{config.ZSXQ_BASE_URL}{path}"
-        resp = self.session.get(url, params=params, headers=headers, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
-
-        if not data.get("succeeded"):
-            code = data.get("code", -1)
-            msg = data.get("msg", "未知错误")
-            logger.error("ZSXQ API error: code=%s msg=%s body=%s", code, msg, resp.text[:500])
-            raise ZsxqError(code, msg, resp.status_code)
-
-        return data
-
-    # ------------------------------------------------------------------
-    # Topics
-    # ------------------------------------------------------------------
+    def check_auth(self) -> bool:
+        """Test whether the API key is valid."""
+        try:
+            self._init()
+            return len(self._tools) > 0
+        except Exception as e:
+            logger.warning("MCP auth check failed: %s", e)
+            return False
 
     def fetch_new_topics(self, last_topic_id: Optional[str] = None,
                          limit: Optional[int] = None) -> list[dict]:
-        """Fetch topics newer than `last_topic_id`, newest first.
+        """Fetch recent topics via MCP, returning chronological (oldest first)."""
+        self._init()
 
-        Returns topics in chronological order (oldest first) for
-        convenient appending to documents.
-        """
-        all_topics = []
-        end_time = ""
-        max_pages = 50  # safety limit
+        limit = limit or 20
+        # Use get_group_topics if available, fall back to search
+        if "get_group_topics" in self._tools:
+            return self._fetch_via_group_topics(last_topic_id, limit)
+        if "search_topics" in self._tools:
+            return self._fetch_via_search(last_topic_id, limit)
+        # Generic tool call attempt
+        return self._fetch_via_any_tool(last_topic_id, limit)
 
-        for _ in range(max_pages):
-            params = {
-                "scope": "all",
-                "count": "20",
-            }
-            if end_time:
-                params["end_time"] = end_time
+    def _fetch_via_group_topics(self, last_topic_id: Optional[str],
+                                 limit: int) -> list[dict]:
+        """Fetch using the get_group_topics MCP tool."""
+        params: dict = {"group_id": self.group_id, "count": min(limit, 30)}
+        result = self._rpc("tools/call", {
+            "name": "get_group_topics",
+            "arguments": params,
+        })
+        content = result.get("content", [])
+        topics = []
+        for item in content:
+            if item.get("type") == "text":
+                try:
+                    data = json.loads(item["text"])
+                    if isinstance(data, dict) and "topics" in data:
+                        topics.extend(data["topics"])
+                    elif isinstance(data, list):
+                        topics.extend(data)
+                except json.JSONDecodeError:
+                    pass
+        return self._filter_and_sort(topics, last_topic_id, limit)
 
-            data = self._get(
-                f"/groups/{self.group_id}/topics",
-                params,
-            )
-            resp_data = data.get("resp_data", {})
-            topics = resp_data.get("topics", [])
-            if not topics:
+    def _fetch_via_search(self, last_topic_id: Optional[str],
+                           limit: int) -> list[dict]:
+        """Fetch using search_topics MCP tool."""
+        topics = []
+        # Search with common keywords to get recent content
+        for keyword in ["", " ", "."]:
+            result = self._rpc("tools/call", {
+                "name": "search_topics",
+                "arguments": {"group_id": self.group_id, "query": keyword},
+            })
+            content = result.get("content", [])
+            for item in content:
+                if item.get("type") == "text":
+                    try:
+                        data = json.loads(item["text"])
+                        if isinstance(data, dict) and "topics" in data:
+                            topics.extend(data["topics"])
+                    except json.JSONDecodeError:
+                        pass
+            if len(topics) >= limit:
                 break
+        return self._filter_and_sort(topics, last_topic_id, limit)
 
-            for topic in topics:
-                topic_id = topic.get("topic_id", "")
-                if topic_id == last_topic_id:
-                    # Reached already-synced content; return chronological
-                    return list(reversed(all_topics))
+    def _fetch_via_any_tool(self, last_topic_id: Optional[str],
+                             limit: int) -> list[dict]:
+        """Try any available tool that returns topics."""
+        topics = []
+        for name in self._tools:
+            if name in ("get_topic", "get_topic_comments"):
+                continue
+            try:
+                result = self._rpc("tools/call", {
+                    "name": name,
+                    "arguments": {"group_id": self.group_id},
+                })
+                content = result.get("content", [])
+                for item in content:
+                    if item.get("type") == "text":
+                        try:
+                            data = json.loads(item["text"])
+                            if isinstance(data, dict):
+                                if "topics" in data:
+                                    topics.extend(data["topics"])
+                                elif "topic_id" in data:
+                                    topics.append(data)
+                        except json.JSONDecodeError:
+                            pass
+                if topics:
+                    break
+            except ZsxqError:
+                continue
+        return self._filter_and_sort(topics, last_topic_id, limit)
 
-                all_topics.append(topic)
-
-                if limit and len(all_topics) >= limit:
-                    return list(reversed(all_topics))
-
-            # Paginate: use the last topic's create_time
-            end_time = topics[-1].get("create_time", "")
-            if not end_time:
+    def _filter_and_sort(self, topics: list[dict],
+                         last_topic_id: Optional[str],
+                         limit: int) -> list[dict]:
+        """Filter out already-synced topics, dedupe, sort chronologically."""
+        seen = set()
+        filtered = []
+        for t in topics:
+            tid = t.get("topic_id", "")
+            if tid == last_topic_id:
                 break
+            if tid and tid not in seen:
+                seen.add(tid)
+                filtered.append(t)
 
-            time.sleep(config.ZSXQ_REQUEST_DELAY)
-
-        return list(reversed(all_topics))
-
-    def check_auth(self) -> bool:
-        """Test whether the cookie is still valid."""
-        try:
-            self._get(f"/groups/{self.group_id}/topics", {"scope": "all", "count": "1"})
-            return True
-        except ZsxqError as e:
-            if e.code in (401, 403, 1000, 1001, 1059):
-                logger.warning("Cookie 可能已失效: code=%s msg=%s", e.code, e.message)
-                return False
-            logger.error("check_auth 遇到非预期错误: %s", e)
-            raise
-
-    # ------------------------------------------------------------------
-    # Attachments
-    # ------------------------------------------------------------------
-
-    def download_attachment(self, url: str, dest_dir: str) -> Optional[str]:
-        """Download a file from ZSXQ CDN. Returns the local file path."""
-        os.makedirs(dest_dir, exist_ok=True)
-        filename = url.split("/")[-1].split("?")[0] or "attachment"
-        filepath = os.path.join(dest_dir, filename)
-
-        try:
-            resp = self.session.get(url, timeout=60, stream=True)
-            resp.raise_for_status()
-            with open(filepath, "wb") as f:
-                for chunk in resp.iter_content(8192):
-                    f.write(chunk)
-            return filepath
-        except Exception:
-            logger.warning("下载附件失败: %s", url, exc_info=True)
-            return None
+        # Sort by create_time ascending (oldest first)
+        filtered.sort(key=lambda t: t.get("create_time", ""))
+        return filtered[:limit]
 
 
 class ZsxqError(Exception):
-    """ZSXQ API error."""
-
     def __init__(self, code: int, message: str, http_status: int = 0):
         self.code = code
         self.message = message
@@ -180,14 +208,12 @@ class ZsxqError(Exception):
 
 
 # ------------------------------------------------------------------
-# Convenience: extract media URLs from a topic dict
+# Media extraction helpers (same as before)
 # ------------------------------------------------------------------
 
 def extract_images(topic: dict) -> list[dict]:
-    """Return list of {url, filename} dicts for images in a topic."""
     images = []
     talk = topic.get("talk", {}) or {}
-    # Images can be in talk.images (array of image objects)
     for img in talk.get("images", []) or []:
         if isinstance(img, dict):
             url = img.get("large_url") or img.get("original_url") or img.get("url", "")
@@ -198,9 +224,7 @@ def extract_images(topic: dict) -> list[dict]:
 
 
 def extract_files(topic: dict) -> list[dict]:
-    """Return list of {url, filename, content_type} for file attachments."""
     files = []
-    # Files can be in topic.files or topic.talk.files
     for container in [topic.get("files", []), topic.get("talk", {}).get("files", [])]:
         for f in (container or []):
             if isinstance(f, dict):

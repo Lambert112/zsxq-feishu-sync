@@ -26,13 +26,9 @@ GitHub Actions (每30分钟)
 
 Fork 此仓库到你的 GitHub 账号（设为公开仓库以获得无限 Actions 分钟数）。
 
-### 2. 获取 Cookie
+### 2. 获取 MCP API Key
 
-1. 在浏览器中登录 [知识星球网页版](https://wx.zsxq.com/dweb2/index)
-2. 打开开发者工具 (F12) → Application → Cookies
-3. 找到 `zsxq_access_token`，复制其值
-4. 同时找到 `abtest` cookie，复制其值
-5. 拼接为 `zsxq_access_token=xxx; abtest=yyy` 格式
+通过知识星球 Skill 平台获取 API Key：https://garden.zsxq.com/skill/
 
 ### 3. 获取社群 ID
 
@@ -56,7 +52,7 @@ https://wx.zsxq.com/dweb2/index/group/48888888888
 
 | Secret | 说明 |
 |--------|------|
-| `ZSXQ_COOKIE` | 知识星球 Cookie 字符串 |
+| `ZSXQ_MCP_API_KEY` | 知识星球 MCP API Key |
 | `ZSXQ_GROUP_ID` | 知识星球社群 ID |
 | `FEISHU_APP_ID` | 飞书应用 ID |
 | `FEISHU_APP_SECRET` | 飞书应用密钥 |
@@ -76,7 +72,7 @@ https://wx.zsxq.com/dweb2/index/group/48888888888
 pip install -r requirements.txt
 
 # 设置环境变量
-export ZSXQ_COOKIE="your-cookie"
+export ZSXQ_MCP_API_KEY="your-api-key"
 export ZSXQ_GROUP_ID="your-group-id"
 export FEISHU_APP_ID="your-app-id"
 export FEISHU_APP_SECRET="your-app-secret"
@@ -90,9 +86,9 @@ pip install pytest
 pytest tests/
 ```
 
-## Cookie 过期处理
+## API Key
 
-Cookie 通常有效 1-3 个月。过期时你会收到飞书机器人通知，卡片中包含直达链接，方便快速更新。
+API Key 长期有效，通过知识星球官方 Skill 平台获取，无需手动续期。
 
 ## 注意事项
 

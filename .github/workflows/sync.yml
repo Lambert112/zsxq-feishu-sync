@@ -51,7 +51,7 @@ jobs:
 
       - name: Run sync
         env:
-          ZSXQ_COOKIE: ${{ secrets.ZSXQ_COOKIE }}
+          ZSXQ_MCP_API_KEY: ${{ secrets.ZSXQ_MCP_API_KEY }}
           ZSXQ_GROUP_ID: ${{ secrets.ZSXQ_GROUP_ID }}
           FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}

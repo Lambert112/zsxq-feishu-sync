@@ -16,7 +16,7 @@ from .content_formatter import (
     get_month_key,
 )
 from .feishu_client import FeishuClient, FeishuError
-from .notifier import send_cookie_expired, send_error, send_sync_summary
+from .notifier import send_auth_error, send_error, send_sync_summary
 from .zsxq_client import ZsxqClient, ZsxqError
 
 logging.basicConfig(
@@ -43,8 +43,8 @@ def run() -> None:
 
     # ---- Check ZSXQ auth ----
     if not zsxq_client.check_auth():
-        logger.error("ZSXQ Cookie 已过期")
-        send_cookie_expired()
+        logger.error("ZSXQ MCP API 认证失败")
+        send_auth_error()
         sys.exit(1)
 
     # ---- Fetch new topics ----

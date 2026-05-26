@@ -11,8 +11,8 @@ from . import config
 logger = logging.getLogger(__name__)
 
 
-def send_cookie_expired() -> None:
-    """Notify user that the ZSXQ cookie has expired."""
+def send_auth_error(detail: str = "") -> None:
+    """Notify user that ZSXQ auth (MCP API key) has failed."""
     webhook = config.FEISHU_BOT_WEBHOOK
     if not webhook:
         logger.warning("未配置 FEISHU_BOT_WEBHOOK，跳过通知")
@@ -22,7 +22,7 @@ def send_cookie_expired() -> None:
         "msg_type": "interactive",
         "card": {
             "header": {
-                "title": {"tag": "plain_text", "content": "ZSXQ Cookie 已过期"},
+                "title": {"tag": "plain_text", "content": "ZSXQ API 认证失败"},
                 "template": "red",
             },
             "elements": [
@@ -31,10 +31,10 @@ def send_cookie_expired() -> None:
                     "text": {
                         "tag": "lark_md",
                         "content": (
-                            "知识星球的登录 Cookie 已经失效，请重新登录后更新 "
-                            "GitHub Secret `ZSXQ_COOKIE`。\n\n"
-                            "[打开知识星球](https://wx.zsxq.com/dweb2/index/group/"
-                            f"{config.ZSXQ_GROUP_ID})"
+                            "知识星球 MCP API Key 认证失败，请检查 "
+                            "GitHub Secret `ZSXQ_MCP_API_KEY` 是否正确。\n"
+                            f"详情: {detail}" if detail else
+                            "知识星球 MCP API Key 认证失败，请检查 GitHub Secret `ZSXQ_MCP_API_KEY`。"
                         ),
                     },
                 }
