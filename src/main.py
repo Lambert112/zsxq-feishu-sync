@@ -85,6 +85,9 @@ def run() -> None:
                 doc_id = feishu_client.create_monthly_doc(year, month)
                 state["current_doc_id"] = doc_id
                 state["current_doc_month"] = month_key
+                # Try to set the user as document manager
+                if config.FEISHU_USER_ID:
+                    feishu_client.add_document_manager(doc_id, config.FEISHU_USER_ID)
         except FeishuError as e:
             logger.error("创建月度文档失败: %s", e)
             send_error(f"飞书文档操作失败: {e}")

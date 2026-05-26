@@ -46,8 +46,7 @@ jobs:
           path: sync_state.json
           key: zsxq-sync-state-${{ secrets.ZSXQ_GROUP_ID }}
           restore-keys: |
-            zsxq-sync-state-${{ secrets.ZSXQ_GROUP_ID }}
-            zsxq-sync-state-
+            zsxq-sync-state-${{ secrets.ZSXQ_GROUP_ID }}-
 
       - name: Run sync
         env:
@@ -57,6 +56,7 @@ jobs:
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
           FEISHU_FOLDER_TOKEN: ${{ secrets.FEISHU_FOLDER_TOKEN }}
           FEISHU_BOT_WEBHOOK: ${{ secrets.FEISHU_BOT_WEBHOOK }}
+          FEISHU_USER_ID: ${{ secrets.FEISHU_USER_ID }}
           FORCE_FULL_SYNC: ${{ github.event.inputs.full_sync }}
         run: python -m src.main
 
@@ -65,7 +65,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: sync_state.json
-          key: zsxq-sync-state-${{ secrets.ZSXQ_GROUP_ID }}-${{ github.run_id }}
+          key: zsxq-sync-state-${{ secrets.ZSXQ_GROUP_ID }}
 
       - name: Notify failure
         if: failure()

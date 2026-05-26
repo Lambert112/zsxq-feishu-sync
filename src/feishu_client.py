@@ -87,6 +87,28 @@ class FeishuClient:
             "title": title,
         })
 
+    def add_document_manager(self, document_id: str, user_id: str) -> bool:
+        """Add a user as full_access manager of a document."""
+        if not user_id:
+            return False
+        # Detect if it's an open_id or user_id
+        member_type = "openid" if user_id.startswith("ou_") else "user_id"
+        try:
+            self._request(
+                "POST",
+                f"/drive/v1/permissions/{document_id}/members?type=docx",
+                body={
+                    "member_type": member_type,
+                    "member_id": user_id,
+                    "perm": "full_access",
+                },
+            )
+            logger.info("Added %s as document manager: %s", user_id, document_id)
+            return True
+        except FeishuError:
+            logger.warning("Failed to add manager (may need drive:drive permission)")
+            return False
+
     def get_document(self, document_id: str) -> dict:
         """Get document info by ID."""
         return self._request("GET", f"/docx/v1/documents/{document_id}")
