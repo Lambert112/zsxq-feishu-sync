@@ -118,18 +118,23 @@ class ZsxqClient:
             "name": "get_group_topics",
             "arguments": params,
         })
+        logger.info("get_group_topics result: %s", json.dumps(result, ensure_ascii=False)[:500])
         content = result.get("content", [])
         topics = []
         for item in content:
             if item.get("type") == "text":
                 try:
                     data = json.loads(item["text"])
-                    if isinstance(data, dict) and "topics" in data:
-                        topics.extend(data["topics"])
+                    if isinstance(data, dict):
+                        if "topics" in data:
+                            topics.extend(data["topics"])
+                        elif "topic_id" in data:
+                            topics.append(data)
                     elif isinstance(data, list):
                         topics.extend(data)
                 except json.JSONDecodeError:
                     pass
+        logger.info("Parsed %d topics from get_group_topics", len(topics))
         return self._filter_and_sort(topics, last_topic_id, limit)
 
     def _fetch_via_search(self, last_topic_id: Optional[str],
