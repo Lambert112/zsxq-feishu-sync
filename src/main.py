@@ -41,6 +41,13 @@ def run() -> None:
     zsxq_client = ZsxqClient()
     feishu_client = FeishuClient()
 
+    # ---- Ensure folder exists ----
+    try:
+        folder_token = feishu_client.ensure_folder()
+        logger.info("同步文件夹: %s", folder_token)
+    except FeishuError as e:
+        logger.warning("无法创建/访问文件夹: %s，将使用默认位置", e)
+
     # ---- Check ZSXQ auth ----
     if not zsxq_client.check_auth():
         logger.error("ZSXQ MCP API 认证失败")
