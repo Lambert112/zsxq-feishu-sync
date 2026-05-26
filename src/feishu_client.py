@@ -64,7 +64,11 @@ class FeishuClient:
                 "Feishu HTTP %s on %s %s: %s",
                 resp.status_code, method, path, resp.text[:500],
             )
-        resp.raise_for_status()
+            raise FeishuError(
+                resp.status_code,
+                f"{method} {path} failed: HTTP {resp.status_code}",
+                resp.status_code,
+            )
         data = resp.json()
         if data.get("code", -1) != 0:
             raise FeishuError(
