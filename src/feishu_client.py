@@ -92,7 +92,7 @@ class FeishuClient:
         if not user_id:
             return False
         # Detect if it's an open_id or user_id
-        member_type = "openid" if user_id.startswith("ou_") else "user_id"
+        member_type = "openid" if user_id.startswith("ou_") else "userid"
         try:
             self._request(
                 "POST",
