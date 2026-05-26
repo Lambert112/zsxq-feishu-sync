@@ -138,27 +138,10 @@ def format_topic_to_blocks(
         time_str = time_str.split(" ")[1]
     blocks.append(build_h2(time_str))
 
-    # Body text — try multiple sources
-    talk = topic.get("talk", {}) or {}
-    question = topic.get("question", {}) or {}
-    text = (talk.get("text", "")
-            or talk.get("rich_text", "")
-            or question.get("text", "")
-            or question.get("rich_text", ""))
+    # Body text — ZSXQ stores it in the flat "content" field
+    text = topic.get("content", "")
     if text:
         blocks.append(build_text(text))
-
-    # Debug: log first topic structure
-    if not hasattr(format_topic_to_blocks, '_debugged'):
-        format_topic_to_blocks._debugged = True
-        logger.info("=== Topic structure debug ===")
-        logger.info("Topic keys: %s", list(topic.keys()))
-        logger.info("Talk keys: %s", list(talk.keys()) if talk else "empty")
-        logger.info("Talk text: %s", repr(talk.get("text", "")[:200]))
-        logger.info("Talk rich_text: %s", repr(talk.get("rich_text", "")[:200]))
-        logger.info("Question keys: %s", list(question.keys()) if question else "empty")
-        logger.info("Full topic (first 1000 chars): %s",
-                    json.dumps(topic, ensure_ascii=False)[:1000])
 
     # Dedup marker
     topic_id = topic.get("topic_id", "")

@@ -254,8 +254,8 @@ class ZsxqError(Exception):
 
 def extract_images(topic: dict) -> list[dict]:
     images = []
-    talk = topic.get("talk", {}) or {}
-    for img in talk.get("images", []) or []:
+    # Images are at topic root (flat structure)
+    for img in (topic.get("images", []) or []):
         if isinstance(img, dict):
             url = img.get("large_url") or img.get("original_url") or img.get("url", "")
             name = img.get("name", "") or url.split("/")[-1].split("?")[0]
@@ -266,11 +266,10 @@ def extract_images(topic: dict) -> list[dict]:
 
 def extract_files(topic: dict) -> list[dict]:
     files = []
-    for container in [topic.get("files", []), topic.get("talk", {}).get("files", [])]:
-        for f in (container or []):
-            if isinstance(f, dict):
-                url = f.get("download_url") or f.get("url", "")
-                name = f.get("name", "") or url.split("/")[-1].split("?")[0]
-                if url:
-                    files.append({"url": url, "filename": name})
+    for f in (topic.get("files", []) or []):
+        if isinstance(f, dict):
+            url = f.get("download_url") or f.get("url", "")
+            name = f.get("name", "") or url.split("/")[-1].split("?")[0]
+            if url:
+                files.append({"url": url, "filename": name})
     return files
