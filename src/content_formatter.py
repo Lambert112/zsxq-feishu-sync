@@ -1,5 +1,6 @@
 """Convert ZSXQ topics to Feishu document blocks."""
 
+import json
 import logging
 import os
 from datetime import datetime, timezone, timedelta
@@ -146,6 +147,18 @@ def format_topic_to_blocks(
             or question.get("rich_text", ""))
     if text:
         blocks.append(build_text(text))
+
+    # Debug: log first topic structure
+    if not hasattr(format_topic_to_blocks, '_debugged'):
+        format_topic_to_blocks._debugged = True
+        logger.info("=== Topic structure debug ===")
+        logger.info("Topic keys: %s", list(topic.keys()))
+        logger.info("Talk keys: %s", list(talk.keys()) if talk else "empty")
+        logger.info("Talk text: %s", repr(talk.get("text", "")[:200]))
+        logger.info("Talk rich_text: %s", repr(talk.get("rich_text", "")[:200]))
+        logger.info("Question keys: %s", list(question.keys()) if question else "empty")
+        logger.info("Full topic (first 1000 chars): %s",
+                    json.dumps(topic, ensure_ascii=False)[:1000])
 
     # Dedup marker
     topic_id = topic.get("topic_id", "")
