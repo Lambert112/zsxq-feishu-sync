@@ -126,7 +126,9 @@ class ZsxqClient:
                 try:
                     data = json.loads(item["text"])
                     if isinstance(data, dict):
-                        if "topics" in data:
+                        if "topics_brief" in data:
+                            topics.extend(data["topics_brief"])
+                        elif "topics" in data:
                             topics.extend(data["topics"])
                         elif "topic_id" in data:
                             topics.append(data)
