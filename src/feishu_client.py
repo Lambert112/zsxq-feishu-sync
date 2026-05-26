@@ -113,19 +113,9 @@ class FeishuClient:
         # Fallback: document_id itself can be used as the page block reference
         return document_id
 
-    def find_or_create_monthly_doc(self, year: int, month: int) -> str:
-        """Find existing monthly doc in the folder, or create one.
-
-        Returns the document_id.
-        """
+    def create_monthly_doc(self, year: int, month: int) -> str:
+        """Create a new monthly document. Returns document_id."""
         title = config.DOC_TITLE_FORMAT.format(year=year, month=month)
-        # Search for existing doc with matching title in folder
-        files = self.list_folder_files()
-        for f in files:
-            if f.get("name") == title and f.get("type") == "docx":
-                return f["token"]
-
-        # Create new monthly doc
         logger.info("创建月度文档: %s", title)
         doc = self.create_document(title)
         return doc["document"]["document_id"]

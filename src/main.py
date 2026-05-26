@@ -74,10 +74,17 @@ def run() -> None:
     total_synced = 0
     last_date_str = ""
     for (year, month), date_groups in sorted(grouped.items()):
+        month_key = f"{year}-{month}"
         try:
-            doc_id = feishu_client.find_or_create_monthly_doc(year, month)
+            if state.get("current_doc_month") == month_key and state.get("current_doc_id"):
+                doc_id = state["current_doc_id"]
+                logger.info("使用已缓存的月度文档: %s", doc_id)
+            else:
+                doc_id = feishu_client.create_monthly_doc(year, month)
+                state["current_doc_id"] = doc_id
+                state["current_doc_month"] = month_key
         except FeishuError as e:
-            logger.error("获取/创建月度文档失败: %s", e)
+            logger.error("创建月度文档失败: %s", e)
             send_error(f"飞书文档操作失败: {e}")
             sys.exit(1)
 
