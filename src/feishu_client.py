@@ -58,6 +58,11 @@ class FeishuClient:
             method, url, json=body, params=params,
             headers=headers, timeout=30,
         )
+        if not resp.ok:
+            logger.error(
+                "Feishu HTTP %s on %s %s: %s",
+                resp.status_code, method, path, resp.text[:500],
+            )
         resp.raise_for_status()
         data = resp.json()
         if data.get("code", -1) != 0:
@@ -70,24 +75,6 @@ class FeishuClient:
     # ------------------------------------------------------------------
     # Document operations
     # ------------------------------------------------------------------
-
-    def list_folder_files(self) -> list[dict]:
-        """List files in the configured folder."""
-        files = []
-        page_token = ""
-        while True:
-            params = {
-                "folder_token": self.folder_token,
-                "page_size": 50,
-            }
-            if page_token:
-                params["page_token"] = page_token
-            data = self._request("GET", "/drive/v1/files", params=params)
-            files.extend(data.get("files", []))
-            if not data.get("has_more"):
-                break
-            page_token = data.get("page_token", "")
-        return files
 
     def create_document(self, title: str) -> dict:
         """Create a new Docx document in the target folder."""
