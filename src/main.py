@@ -73,7 +73,7 @@ def run() -> None:
     # ---- Sync each month group ----
     total_synced = 0
     last_date_str = ""
-    for (year, month), date_groups in sorted(grouped.items()):
+    for (year, month), date_groups in sorted(grouped.items(), reverse=True):
         month_key = f"{year}-{month}"
         try:
             if (not config.FORCE_FULL_SYNC
@@ -90,7 +90,7 @@ def run() -> None:
             send_error(f"飞书文档操作失败: {e}")
             sys.exit(1)
 
-        for date_str in sorted(date_groups.keys()):
+        for date_str in sorted(date_groups.keys(), reverse=True):
             day_topics = date_groups[date_str]
             blocks = []
 
