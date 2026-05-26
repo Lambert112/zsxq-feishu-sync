@@ -49,12 +49,17 @@ class ZsxqClient:
         )
         resp.raise_for_status()
 
-        # SSE format: lines are "event: ..." or "data: ..."
-        data_payload = None
-        for line in resp.iter_lines(decode_unicode=True):
-            if line and line.startswith("data: "):
-                data_payload = line[6:]  # strip "data: " prefix
-        if data_payload is None:
+        # Parse SSE: collect data lines from the last event
+        text = resp.text
+        data_payload = ""
+        for block in text.split("\n\n"):
+            block = block.strip()
+            if not block:
+                continue
+            for line in block.split("\n"):
+                if line.startswith("data: "):
+                    data_payload += line[6:]
+        if not data_payload:
             raise ZsxqError(-1, f"Empty SSE response for {method}")
         result = json.loads(data_payload)
         if "error" in result:
