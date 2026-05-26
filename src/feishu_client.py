@@ -77,10 +77,9 @@ class FeishuClient:
     # ------------------------------------------------------------------
 
     def create_document(self, title: str) -> dict:
-        """Create a new Docx document in the target folder."""
+        """Create a new Docx document."""
         return self._request("POST", "/docx/v1/documents", body={
             "title": title,
-            "folder_token": self.folder_token,
         })
 
     def get_document(self, document_id: str) -> dict:

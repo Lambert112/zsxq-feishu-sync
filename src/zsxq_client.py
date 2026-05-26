@@ -112,32 +112,56 @@ class ZsxqClient:
 
     def _fetch_via_group_topics(self, last_topic_id: Optional[str],
                                  limit: int) -> list[dict]:
-        """Fetch using the get_group_topics MCP tool."""
-        params: dict = {"group_id": self.group_id, "count": min(limit, 30)}
+        """Fetch using get_group_topics, then enrich with get_topic_info."""
         result = self._rpc("tools/call", {
             "name": "get_group_topics",
-            "arguments": params,
+            "arguments": {"group_id": self.group_id, "count": min(limit, 30)},
         })
-        logger.info("get_group_topics result: %s", json.dumps(result, ensure_ascii=False)[:500])
         content = result.get("content", [])
-        topics = []
+        brief_topics = []
         for item in content:
             if item.get("type") == "text":
                 try:
                     data = json.loads(item["text"])
                     if isinstance(data, dict):
                         if "topics_brief" in data:
-                            topics.extend(data["topics_brief"])
+                            brief_topics.extend(data["topics_brief"])
                         elif "topics" in data:
-                            topics.extend(data["topics"])
-                        elif "topic_id" in data:
-                            topics.append(data)
-                    elif isinstance(data, list):
-                        topics.extend(data)
+                            brief_topics.extend(data["topics"])
                 except json.JSONDecodeError:
                     pass
+
+        # Enrich with full topic details
+        topics = []
+        for bt in brief_topics:
+            tid = bt.get("topic_id", "")
+            detail = self._get_topic_detail(tid)
+            if detail:
+                topics.append(detail)
+            else:
+                # Fall back to brief info
+                topics.append(bt)
+            time.sleep(0.3)  # gentle rate limit
+
         logger.info("Parsed %d topics from get_group_topics", len(topics))
         return self._filter_and_sort(topics, last_topic_id, limit)
+
+    def _get_topic_detail(self, topic_id: str) -> Optional[dict]:
+        """Fetch full topic detail via get_topic_info MCP tool."""
+        try:
+            result = self._rpc("tools/call", {
+                "name": "get_topic_info",
+                "arguments": {"topic_id": topic_id},
+            })
+            content = result.get("content", [])
+            for item in content:
+                if item.get("type") == "text":
+                    data = json.loads(item["text"])
+                    if isinstance(data, dict):
+                        return data
+        except Exception:
+            logger.debug("Failed to get detail for topic %s", topic_id)
+        return None
 
     def _fetch_via_search(self, last_topic_id: Optional[str],
                            limit: int) -> list[dict]:
