@@ -228,7 +228,8 @@ class FeishuClient:
 class FeishuError(Exception):
     """Feishu API error."""
 
-    def __init__(self, code: int, message: str):
+    def __init__(self, code: int, message: str, http_status: int = 0):
         self.code = code
         self.message = message
+        self.http_status = http_status
         super().__init__(f"[{code}] {message}")
