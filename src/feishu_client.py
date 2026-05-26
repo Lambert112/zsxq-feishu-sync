@@ -77,11 +77,13 @@ class FeishuClient:
     # Document operations
     # ------------------------------------------------------------------
 
-    def create_document(self, title: str) -> dict:
-        """Create a new Docx document."""
-        return self._request("POST", "/docx/v1/documents", body={
-            "title": title,
-        })
+    def create_document(self, title: str, folder_token: Optional[str] = None) -> dict:
+        """Create a new Docx document, optionally in a folder."""
+        body: dict = {"title": title}
+        ft = folder_token or self.folder_token
+        if ft:
+            body["folder_token"] = ft
+        return self._request("POST", "/docx/v1/documents", body=body)
 
     def get_document(self, document_id: str) -> dict:
         """Get document info by ID."""

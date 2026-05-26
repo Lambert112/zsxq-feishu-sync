@@ -143,10 +143,6 @@ def format_topic_to_blocks(
     if text:
         blocks.append(build_text(text))
 
-    # Dedup marker
-    topic_id = topic.get("topic_id", "")
-    if topic_id:
-        blocks.append(build_text(f"[zsxq_topic_id: {topic_id}]"))
 
     temp_dir = config.TEMP_DIR
 
