@@ -81,28 +81,11 @@ class FeishuClient:
     # Document operations
     # ------------------------------------------------------------------
 
-    def create_document(self, title: str, folder_token: Optional[str] = None) -> dict:
-        """Create a new Docx document, optionally in a folder."""
-        body: dict = {"title": title}
-        ft = folder_token or self.folder_token
-        if ft:
-            body["folder_token"] = ft
-        return self._request("POST", "/docx/v1/documents", body=body)
-
-    def ensure_folder(self) -> str:
-        """Create a folder for sync documents. Returns folder token."""
-        # Create a new folder in root (app-owned, full permissions)
-        data = self._request("POST", "/drive/v1/folders", body={
-            "name": "知识星球同步文档",
-            "folder_token": "",
+    def create_document(self, title: str) -> dict:
+        """Create a new Docx document."""
+        return self._request("POST", "/docx/v1/documents", body={
+            "title": title,
         })
-        folder = data.get("folder", {})
-        new_token = folder.get("token", "")
-        folder_url = folder.get("url", "")
-        if new_token:
-            self.folder_token = new_token
-            logger.info("Created folder: %s (%s)", new_token, folder_url)
-        return new_token
 
     def get_document(self, document_id: str) -> dict:
         """Get document info by ID."""
