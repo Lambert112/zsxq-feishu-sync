@@ -133,7 +133,7 @@ def run() -> None:
     # ---- Save final state ----
     if not config.DRY_RUN:
         latest_topic = topics[-1]
-        state_mgr.update_last_topic(latest_topic.get("topic_id", ""))
+        state_mgr.update_last_topic(latest_topic.get("topic_id", ""), state)
 
     elapsed = time.time() - start_time
     logger.info("=== 同步完成: %d 条帖子, 耗时 %.1f 秒 ===", total_synced, elapsed)
@@ -150,7 +150,7 @@ def _save_progress(state: dict, topics: list, count: int) -> None:
     """Save partial progress so we don't re-sync already-processed topics."""
     if count > 0 and count <= len(topics):
         last_processed = topics[count - 1]
-        state_mgr.update_last_topic(last_processed.get("topic_id", ""))
+        state_mgr.update_last_topic(last_processed.get("topic_id", ""), state)
 
 
 if __name__ == "__main__":

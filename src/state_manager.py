@@ -30,10 +30,15 @@ def save_state(state: dict) -> None:
     logger.info("保存同步状态: last_topic_id=%s", state.get("last_topic_id"))
 
 
-def update_last_topic(topic_id: str) -> dict:
-    """Update state with a new last_topic_id and return it."""
+def update_last_topic(topic_id: str, state: dict | None = None) -> dict:
+    """Update state with a new last_topic_id and return it.
+
+    If state is provided, it is updated in-place and saved.
+    Otherwise, state is loaded from disk first.
+    """
     import time
-    state = load_state()
+    if state is None:
+        state = load_state()
     state["last_topic_id"] = topic_id
     state["last_sync_time"] = int(time.time())
     save_state(state)
