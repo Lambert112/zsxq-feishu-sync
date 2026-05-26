@@ -235,8 +235,8 @@ class ZsxqClient:
                 seen.add(tid)
                 filtered.append(t)
 
-        # Sort by create_time ascending (oldest first)
-        filtered.sort(key=lambda t: t.get("create_time", ""))
+        # Sort by create_time descending (newest first)
+        filtered.sort(key=lambda t: t.get("create_time", ""), reverse=True)
         return filtered[:limit]
 
 
