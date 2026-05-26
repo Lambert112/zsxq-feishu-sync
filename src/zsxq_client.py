@@ -158,6 +158,12 @@ class ZsxqClient:
                 if item.get("type") == "text":
                     data = json.loads(item["text"])
                     if isinstance(data, dict):
+                        # Log first topic structure for debugging
+                        if not hasattr(self, '_debugged_topic'):
+                            self._debugged_topic = True
+                            logger.info("Topic detail keys: %s", list(data.keys()))
+                            logger.info("Topic detail sample: %s",
+                                        json.dumps(data, ensure_ascii=False)[:300])
                         return data
         except Exception:
             logger.debug("Failed to get detail for topic %s", topic_id)
