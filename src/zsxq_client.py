@@ -41,7 +41,7 @@ class ZsxqClient:
         sorted_str = "&".join(
             f"{k}={v}" for k, v in sorted(all_params.items())
         )
-        sign_str = f"{path}&{sorted_str}&{config.ZSXQ_SECRET}&{ts_ms}"
+        sign_str = f"{path}&{sorted_str}&{config.ZSXQ_SECRET}"
         signature = hashlib.md5(sign_str.encode()).hexdigest()
         return signature, ts_ms
 
