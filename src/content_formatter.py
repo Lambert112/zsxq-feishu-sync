@@ -130,13 +130,13 @@ def format_topic_to_blocks(
     # Divider
     blocks.append(build_divider())
 
-    # Time as H2 (e.g. "14:30")
+    # Time as plain text (e.g. "14:30")
     create_time = topic.get("create_time", "")
     time_str = format_time(create_time)
     # Extract just the time part if format is "YYYY-MM-DD HH:MM"
     if " " in time_str:
         time_str = time_str.split(" ")[1]
-    blocks.append(build_h2(time_str))
+    blocks.append(build_text(time_str))
 
     # Body text — ZSXQ stores it in the flat "content" field
     text = topic.get("content", "")
