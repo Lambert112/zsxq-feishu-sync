@@ -165,7 +165,7 @@ class FeishuClient:
                 "POST",
                 f"/docx/v1/documents/{document_id}/blocks/{parent_block_id}/children"
                 f"?document_revision_id=-1",
-                body={"children": batch, "index": -1},
+                body={"children": batch, "index": 0},
             )
             created.extend(data.get("children", []))
             if i + MAX_PER_BATCH < len(blocks):
