@@ -27,6 +27,14 @@ class ZsxqClient:
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/131.0.0.0 Safari/537.36"
             ),
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Referer": "https://wx.zsxq.com/",
+            "Origin": "https://wx.zsxq.com",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-site",
             "Cookie": self.cookie,
         })
 
@@ -41,7 +49,7 @@ class ZsxqClient:
         sorted_str = "&".join(
             f"{k}={v}" for k, v in sorted(all_params.items())
         )
-        sign_str = f"{path}&{sorted_str}&{config.ZSXQ_SECRET}"
+        sign_str = f"{path}&{sorted_str}&{config.ZSXQ_SECRET}&{ts_ms}"
         signature = hashlib.md5(sign_str.encode()).hexdigest()
         return signature, ts_ms
 
@@ -70,6 +78,7 @@ class ZsxqClient:
         if not data.get("succeeded"):
             code = data.get("code", -1)
             msg = data.get("msg", "未知错误")
+            logger.error("ZSXQ API error: code=%s msg=%s body=%s", code, msg, resp.text[:500])
             raise ZsxqError(code, msg, resp.status_code)
 
         return data
@@ -132,8 +141,10 @@ class ZsxqClient:
             self._get(f"/groups/{self.group_id}/topics", {"scope": "all", "count": "1"})
             return True
         except ZsxqError as e:
-            if e.code in (401, 403, 1000, 1001):
+            if e.code in (401, 403, 1000, 1001, 1059):
+                logger.warning("Cookie 可能已失效: code=%s msg=%s", e.code, e.message)
                 return False
+            logger.error("check_auth 遇到非预期错误: %s", e)
             raise
 
     # ------------------------------------------------------------------
