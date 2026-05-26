@@ -1,0 +1,75 @@
+name: ZSXQ to Feishu Sync
+
+on:
+  schedule:
+    # Every 30 minutes (at 7 and 37 past each hour, to avoid :00/:30 peak)
+    - cron: '7,37 * * * *'
+  workflow_dispatch:
+    inputs:
+      full_sync:
+        description: 'Force full sync (ignore last_synced state)'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            pip-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore sync state
+        uses: actions/cache/restore@v4
+        id: cache-restore
+        with:
+          path: sync_state.json
+          key: zsxq-sync-state-${{ secrets.ZSXQ_GROUP_ID }}
+          restore-keys: |
+            zsxq-sync-state-${{ secrets.ZSXQ_GROUP_ID }}
+            zsxq-sync-state-
+
+      - name: Run sync
+        env:
+          ZSXQ_COOKIE: ${{ secrets.ZSXQ_COOKIE }}
+          ZSXQ_GROUP_ID: ${{ secrets.ZSXQ_GROUP_ID }}
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_FOLDER_TOKEN: ${{ secrets.FEISHU_FOLDER_TOKEN }}
+          FEISHU_BOT_WEBHOOK: ${{ secrets.FEISHU_BOT_WEBHOOK }}
+          FORCE_FULL_SYNC: ${{ github.event.inputs.full_sync }}
+        run: python -m src.main
+
+      - name: Save sync state
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: sync_state.json
+          key: zsxq-sync-state-${{ secrets.ZSXQ_GROUP_ID }}-${{ github.run_id }}
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          curl -s -X POST "${{ secrets.FEISHU_BOT_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"ZSXQ 同步失败，请检查日志: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID\"}}"
