@@ -129,19 +129,21 @@ def format_topic_to_blocks(
     # Divider
     blocks.append(build_divider())
 
-    # Title — strip newlines (headings are single-line)
-    title = topic.get("title", "") or _extract_title_from_talk(topic)
-    title = title.replace("\n", " ").replace("\r", " ").strip()
-    if not title:
-        title = "无标题"
-    blocks.append(build_h2(title))
-
-    # Publish time
+    # Time as H2 (e.g. "14:30")
     create_time = topic.get("create_time", "")
-    blocks.append(build_text(f"发布时间：{format_time(create_time)}"))
+    time_str = format_time(create_time)
+    # Extract just the time part if format is "YYYY-MM-DD HH:MM"
+    if " " in time_str:
+        time_str = time_str.split(" ")[1]
+    blocks.append(build_h2(time_str))
 
-    # Body text
-    text = topic.get("talk", {}).get("text", "")
+    # Body text — try multiple sources
+    talk = topic.get("talk", {}) or {}
+    question = topic.get("question", {}) or {}
+    text = (talk.get("text", "")
+            or talk.get("rich_text", "")
+            or question.get("text", "")
+            or question.get("rich_text", ""))
     if text:
         blocks.append(build_text(text))
 
