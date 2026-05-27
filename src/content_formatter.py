@@ -256,10 +256,13 @@ def _download_zsxq_file(f_info: dict, dest_dir: str, zsxq_client=None) -> Option
                 logger.warning("ZSXQ file download produced empty/missing file")
                 _safe_remove(filepath)
                 return None
-        logger.warning("ZSXQ MCP download failed for file %s, trying direct URL...", file_id)
+        logger.warning("ZSXQ file download not supported for %s — skipping", file_id)
+        return None
 
-    # Regular HTTP download
-    return _download(url, dest_dir)
+    # Regular HTTP download (only for http/https URLs)
+    if url.startswith("http"):
+        return _download(url, dest_dir)
+    return None
 
 
 def _safe_remove(path: str) -> None:
