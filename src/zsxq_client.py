@@ -185,38 +185,50 @@ class ZsxqClient:
 
     def download_file(self, file_id: str, dest_path: str) -> bool:
         """Download a ZSXQ file via call_zsxq_api. Returns True on success."""
-        try:
-            result = self._rpc("tools/call", {
-                "name": "call_zsxq_api",
-                "arguments": json.dumps({
-                    "method": "GET",
-                    "path": f"/files/{file_id}/download",
-                }),
-            })
-            content = result.get("content", [])
-            for item in content:
-                if item.get("type") == "text":
-                    data = json.loads(item["text"])
-                    if isinstance(data, dict):
-                        # Response may contain download_url or base64 content
-                        download_url = data.get("download_url") or data.get("url", "")
-                        if download_url:
-                            # Fetch the actual file from the download URL
-                            resp = requests.get(download_url, timeout=120)
-                            resp.raise_for_status()
-                            with open(dest_path, "wb") as f:
-                                f.write(resp.content)
-                            return True
-                        # Maybe base64 encoded content
-                        b64 = data.get("content") or data.get("data", "")
-                        if b64:
-                            import base64
-                            with open(dest_path, "wb") as f:
-                                f.write(base64.b64decode(b64))
-                            return True
-            logger.warning("call_zsxq_api download returned unexpected format for file %s", file_id)
-        except Exception as e:
-            logger.warning("Failed to download file %s via call_zsxq_api: %s", file_id, e)
+        # Log the call_zsxq_api tool schema for debugging
+        tool_schema = self._tools.get("call_zsxq_api", {})
+        logger.info("call_zsxq_api schema: %s",
+                    json.dumps(tool_schema.get("inputSchema", {}), ensure_ascii=False)[:500])
+
+        # Try multiple argument formats — the MCP tool may expect different names
+        for args in [
+            {"url": f"/files/{file_id}/download", "method": "GET"},
+            {"path": f"/files/{file_id}/download", "method": "get"},
+            {"api": f"/files/{file_id}/download", "method": "GET"},
+            {"endpoint": f"/files/{file_id}/download"},
+        ]:
+            try:
+                result = self._rpc("tools/call", {
+                    "name": "call_zsxq_api",
+                    "arguments": json.dumps(args),
+                })
+                content = result.get("content", [])
+                for item in content:
+                    if item.get("type") == "text":
+                        data = json.loads(item["text"])
+                        if isinstance(data, dict):
+                            download_url = data.get("download_url") or data.get("url", "")
+                            if download_url:
+                                resp = requests.get(download_url, timeout=120)
+                                resp.raise_for_status()
+                                with open(dest_path, "wb") as f:
+                                    f.write(resp.content)
+                                return True
+                            b64 = data.get("content") or data.get("data", "")
+                            if b64:
+                                import base64
+                                with open(dest_path, "wb") as f:
+                                    f.write(base64.b64decode(b64))
+                                return True
+                logger.info("call_zsxq_api with args %s returned no downloadable content",
+                            json.dumps(args)[:80])
+            except ZsxqError as e:
+                logger.warning("call_zsxq_api args=%s failed: %s",
+                               json.dumps(args)[:80], e)
+            except Exception as e:
+                logger.warning("Download processing failed for args=%s: %s",
+                               json.dumps(args)[:80], e)
+
         return False
 
     def _fetch_via_search(self, last_sync_time: Optional[int],
@@ -339,24 +351,44 @@ def _lookup_images(obj: dict) -> list[dict]:
             if isinstance(d.get(sub), dict):
                 _collect(d[sub], depth + 1)
 
+    import ast
+
+    def _parse_url(val):
+        """Parse a URL from a value that may be a string dict like \"{'url': '...'}\"."""
+        if isinstance(val, str) and val.strip().startswith("{"):
+            try:
+                d = ast.literal_eval(val)
+                if isinstance(d, dict):
+                    return d.get("url", "")
+            except (ValueError, SyntaxError):
+                pass
+        return val if isinstance(val, str) else ""
+
     _collect(obj)
     for img in candidates:
         if not isinstance(img, dict):
             continue
+        # Try direct URL fields first, then thumbnail/large/original (which may be string-dicts)
         url = (
             img.get("large_url") or img.get("original_url") or img.get("url")
             or img.get("image_url") or img.get("source_url") or img.get("link") or ""
         )
+        if not url:
+            for size_key in ("large", "original", "thumbnail"):
+                val = img.get(size_key, "")
+                url = _parse_url(val)
+                if url:
+                    break
         name = (
             img.get("name") or img.get("file_name") or img.get("filename")
             or img.get("title") or ""
-        ) or url.split("/")[-1].split("?")[0]
+        ) or url.split("/")[-1].split("?")[0] if url else "image"
         if url and url not in {i["url"] for i in images}:
-            logger.debug("Extracted image: url=%s, name=%s", url[:80], name)
+            logger.info("Extracted image: url=%s, name=%s", url[:80], name)
             images.append({"url": url, "filename": name or "image"})
     if candidates and not images:
         logger.warning("Image candidates found but no valid URL — candidate keys: %s",
-                       [{k: str(v)[:60] for k, v in c.items()} for c in candidates[:3]])
+                       [{k: str(v)[:80] for k, v in c.items()} for c in candidates[:3]])
     return images
 
 
