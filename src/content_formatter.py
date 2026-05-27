@@ -168,26 +168,25 @@ def format_topic_to_blocks(
 
     temp_dir = config.TEMP_DIR
 
-    # Images
+    # Images — temporarily disabled to isolate 1770001 error
     images = zsxq.extract_images(topic)
     if images:
-        logger.info("发现 %d 张图片 (topic_id=%s)", len(images), topic.get("topic_id", "?"))
-    for img in images[:10]:
-        local_path = _download(img["url"], temp_dir)
-        if local_path:
-            # Sanitize filename — ZSXQ URLs sometimes contain query params in the name
-            clean_name = _sanitize_filename(img.get("filename", "image"))
-            file_token = feishu.upload_media(
-                local_path, clean_name,
-                parent_type="docx_image",
-                parent_node=doc_id,
-            )
-            if file_token:
-                logger.info("图片上传成功: token=%s", file_token)
-                blocks.append(build_image(file_token))
-            else:
-                logger.warning("图片上传失败: %s", clean_name)
-            _safe_remove(local_path)
+        logger.info("发现 %d 张图片 (topic_id=%s) — 暂时跳过以调试", len(images), topic.get("topic_id", "?"))
+    # for img in images[:10]:
+    #     local_path = _download(img["url"], temp_dir)
+    #     if local_path:
+    #         clean_name = _sanitize_filename(img.get("filename", "image"))
+    #         file_token = feishu.upload_media(
+    #             local_path, clean_name,
+    #             parent_type="docx_image",
+    #             parent_node=doc_id,
+    #         )
+    #         if file_token:
+    #             logger.info("图片上传成功: token=%s", file_token)
+    #             blocks.append(build_image(file_token))
+    #         else:
+    #             logger.warning("图片上传失败: %s", clean_name)
+    #         _safe_remove(local_path)
 
     # Files (PDF etc.)
     files = zsxq.extract_files(topic)
