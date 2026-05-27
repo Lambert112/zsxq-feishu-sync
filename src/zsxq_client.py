@@ -314,14 +314,20 @@ def _lookup_images(obj: dict) -> list[dict]:
     for img in candidates:
         if not isinstance(img, dict):
             continue
-        url = img.get("large_url") or img.get("original_url") or img.get("url", "")
-        name = img.get("name", "") or img.get("file_name", "") or url.split("/")[-1].split("?")[0]
+        url = (
+            img.get("large_url") or img.get("original_url") or img.get("url")
+            or img.get("image_url") or img.get("source_url") or img.get("link") or ""
+        )
+        name = (
+            img.get("name") or img.get("file_name") or img.get("filename")
+            or img.get("title") or ""
+        ) or url.split("/")[-1].split("?")[0]
         if url and url not in {i["url"] for i in images}:
             logger.debug("Extracted image: url=%s, name=%s", url[:80], name)
             images.append({"url": url, "filename": name or "image"})
     if candidates and not images:
-        logger.debug("Image candidates found but no valid URLs: %s",
-                     [{k: str(v)[:50] for k, v in c.items() if k != "url"} for c in candidates[:3]])
+        logger.warning("Image candidates found but no valid URL — candidate keys: %s",
+                       [{k: str(v)[:60] for k, v in c.items()} for c in candidates[:3]])
     return images
 
 
@@ -349,8 +355,20 @@ def extract_files(topic: dict) -> list[dict]:
     for f in candidates:
         if not isinstance(f, dict):
             continue
-        url = f.get("download_url") or f.get("url", "")
-        name = f.get("name", "") or f.get("file_name", "") or url.split("/")[-1].split("?")[0]
+        # Try all known URL field names
+        url = (
+            f.get("download_url") or f.get("url") or f.get("file_url")
+            or f.get("source_url") or f.get("link") or ""
+        )
+        # Try all known name field names
+        name = (
+            f.get("name") or f.get("file_name") or f.get("filename")
+            or f.get("title") or ""
+        ) or url.split("/")[-1].split("?")[0]
         if url and url not in {fl["url"] for fl in files}:
+            logger.debug("Extracted file: url=%s, name=%s, raw_keys=%s", url[:80], name, list(f.keys())[:10])
             files.append({"url": url, "filename": name or "file"})
+    if candidates and not files:
+        logger.warning("File candidates found but no valid URL — candidate keys: %s",
+                       [{k: str(v)[:60] for k, v in c.items()} for c in candidates[:3]])
     return files
