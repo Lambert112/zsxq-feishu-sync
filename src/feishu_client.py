@@ -189,6 +189,12 @@ class FeishuClient:
                         )
                         time.sleep(wait)
                     else:
+                        if attempt == MAX_RETRIES - 1:
+                            logger.error(
+                                "Failed batch content (all %d blocks): %s",
+                                len(batch),
+                                json.dumps(batch, ensure_ascii=False)[:3000],
+                            )
                         raise
 
             if i + MAX_PER_BATCH < len(blocks):
