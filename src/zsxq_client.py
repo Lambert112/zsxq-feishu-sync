@@ -165,7 +165,35 @@ class ZsxqClient:
         return self._filter_new(topics, last_sync_time, limit)
 
     def _get_topic_detail(self, topic_id: str) -> Optional[dict]:
-        """Fetch full topic detail via get_topic_info MCP tool."""
+        """Fetch full topic detail via call_zsxq_api (raw API) — get_topic_info omits images/files."""
+        # Try raw API first — get_topic_info may omit image/file arrays
+        try:
+            result = self._rpc("tools/call", {
+                "name": "call_zsxq_api",
+                "arguments": json.dumps({
+                    "method": "GET",
+                    "path": f"/topics/{topic_id}",
+                }),
+            })
+            content = result.get("content", [])
+            for item in content:
+                if item.get("type") == "text":
+                    data = json.loads(item["text"])
+                    if isinstance(data, dict):
+                        logger.info("call_zsxq_api response keys: %s", list(data.keys())[:10])
+                        # ZSXQ raw API wraps in resp_data -> topic
+                        topic = data.get("resp_data", data)
+                        if isinstance(topic, dict) and "topic" in topic:
+                            topic = topic["topic"]
+                        if isinstance(topic, dict) and "topic_id" in topic:
+                            logger.info("Raw API topic: imgs=%d, files=%d",
+                                        len(topic.get("images") or []),
+                                        len(topic.get("files") or []))
+                            return topic
+        except Exception as e:
+            logger.debug("call_zsxq_api failed: %s, trying get_topic_info", e)
+
+        # Fallback to get_topic_info
         try:
             result = self._rpc("tools/call", {
                 "name": "get_topic_info",
@@ -176,15 +204,8 @@ class ZsxqClient:
                 if item.get("type") == "text":
                     data = json.loads(item["text"])
                     if isinstance(data, dict):
-                        # Unwrap {"success": true, "topic": {...}}
                         if "topic" in data:
-                            topic = data["topic"]
-                            logger.debug("Topic detail keys: %s, has images=%s, has files=%s",
-                                        list(topic.keys()),
-                                        "images" in topic,
-                                        "files" in topic)
-                            return topic
-                        logger.debug("Topic detail (no 'topic' wrapper) keys: %s", list(data.keys()))
+                            return data["topic"]
                         return data
         except Exception:
             logger.debug("Failed to get detail for topic %s", topic_id)
