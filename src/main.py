@@ -76,8 +76,7 @@ def run() -> None:
     for (year, month), date_groups in sorted(grouped.items(), reverse=True):
         month_key = f"{year}-{month}"
         try:
-            if (not config.FORCE_FULL_SYNC
-                    and state.get("current_doc_month") == month_key
+            if (state.get("current_doc_month") == month_key
                     and state.get("current_doc_id")):
                 doc_id = state["current_doc_id"]
                 logger.info("使用已缓存的月度文档: %s", doc_id)

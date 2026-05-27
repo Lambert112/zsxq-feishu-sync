@@ -184,14 +184,14 @@ class ZsxqClient:
         return None
 
     def download_file(self, file_id: str, dest_path: str) -> bool:
-        """Download a ZSXQ file. Tries call_zsxq_api then direct API call."""
+        """Download a ZSXQ file. Tries multiple approaches."""
         group_id = config.ZSXQ_GROUP_ID
 
-        # Approach 1: call_zsxq_api with various paths
+        # Approach 1: call_zsxq_api — first get file info, then try download
         for args in [
-            {"method": "POST", "path": "/v2/files/download", "body": {"file_id": file_id}},
-            {"method": "GET", "path": f"/v2/files/{file_id}/download"},
-            {"method": "GET", "path": f"/v2/groups/{group_id}/files/{file_id}/download"},
+            {"method": "GET", "path": f"/v2/files/{file_id}"},
+            {"method": "GET", "path": f"/v2/groups/{group_id}/files/{file_id}"},
+            {"method": "GET", "path": f"/v2/files/{file_id}/url"},
         ]:
             try:
                 result = self._rpc("tools/call", {
@@ -225,33 +225,33 @@ class ZsxqClient:
                 logger.warning("Download processing failed for args=%s: %s",
                                json.dumps(args)[:80], e)
 
-        # Approach 2: Direct HTTP call to ZSXQ API with MCP API key
-        try:
-            api_url = f"https://api.zsxq.com/v2/files/{file_id}/download"
-            headers = {
-                "User-Agent": "zsxq-sync/1.0",
-                "X-API-Key": config.ZSXQ_MCP_API_KEY,
-                "Cookie": f"mcp_api_key={config.ZSXQ_MCP_API_KEY}",
-            }
-            resp = requests.get(api_url, headers=headers, timeout=120, stream=True)
-            if resp.ok and len(resp.content) > 0:
-                content_type = resp.headers.get("Content-Type", "")
-                if "json" in content_type:
-                    data = resp.json()
-                    dl_url = data.get("download_url") or data.get("url", "")
-                    if dl_url:
-                        resp2 = requests.get(dl_url, timeout=120)
-                        resp2.raise_for_status()
+        # Approach 2: Direct HTTP to various ZSXQ file URLs
+        for api_url in [
+            f"https://api.zsxq.com/v2/files/{file_id}/download",
+            f"https://api.zsxq.com/v2/files/{file_id}",
+            f"https://zsxq.com/api/v2/files/{file_id}/download",
+        ]:
+            try:
+                headers = {"User-Agent": "zsxq-sync/1.0"}
+                resp = requests.get(api_url, headers=headers, timeout=120, stream=True)
+                if resp.ok and len(resp.content) > 0:
+                    ct = resp.headers.get("Content-Type", "")
+                    if "json" in ct:
+                        data = resp.json()
+                        dl_url = data.get("download_url") or data.get("url", "")
+                        if dl_url:
+                            r2 = requests.get(dl_url, timeout=120)
+                            r2.raise_for_status()
+                            with open(dest_path, "wb") as f:
+                                f.write(r2.content)
+                            return True
+                    elif "text/html" not in ct:
                         with open(dest_path, "wb") as f:
-                            f.write(resp2.content)
+                            f.write(resp.content)
                         return True
-                else:
-                    with open(dest_path, "wb") as f:
-                        f.write(resp.content)
-                    return True
-            logger.warning("Direct API download failed: HTTP %s", resp.status_code)
-        except Exception as e:
-            logger.warning("Direct API download exception: %s", e)
+                logger.debug("Direct download %s -> HTTP %s", api_url, resp.status_code)
+            except Exception as e:
+                logger.debug("Direct download %s exception: %s", api_url, e)
 
         return False
 
