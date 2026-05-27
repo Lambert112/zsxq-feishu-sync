@@ -100,7 +100,14 @@ def build_divider() -> dict:
 
 
 def build_image(file_token: str) -> dict:
-    return {"block_type": 27, "image": {"token": file_token}}
+    return {
+        "block_type": 27,
+        "image": {
+            "token": file_token,
+            "width": 400,
+            "height": 300,
+        },
+    }
 
 
 def build_file(file_token: str, name: str) -> dict:
