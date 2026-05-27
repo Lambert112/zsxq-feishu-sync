@@ -165,35 +165,7 @@ class ZsxqClient:
         return self._filter_new(topics, last_sync_time, limit)
 
     def _get_topic_detail(self, topic_id: str) -> Optional[dict]:
-        """Fetch full topic detail via call_zsxq_api (raw API) — get_topic_info omits images/files."""
-        # Try raw API first — get_topic_info may omit image/file arrays
-        try:
-            result = self._rpc("tools/call", {
-                "name": "call_zsxq_api",
-                "arguments": json.dumps({
-                    "method": "GET",
-                    "path": f"/topics/{topic_id}",
-                }),
-            })
-            content = result.get("content", [])
-            for item in content:
-                if item.get("type") == "text":
-                    data = json.loads(item["text"])
-                    if isinstance(data, dict):
-                        logger.info("call_zsxq_api response keys: %s", list(data.keys())[:10])
-                        # ZSXQ raw API wraps in resp_data -> topic
-                        topic = data.get("resp_data", data)
-                        if isinstance(topic, dict) and "topic" in topic:
-                            topic = topic["topic"]
-                        if isinstance(topic, dict) and "topic_id" in topic:
-                            logger.info("Raw API topic: imgs=%d, files=%d",
-                                        len(topic.get("images") or []),
-                                        len(topic.get("files") or []))
-                            return topic
-        except Exception as e:
-            logger.debug("call_zsxq_api failed: %s, trying get_topic_info", e)
-
-        # Fallback to get_topic_info
+        """Fetch full topic detail via get_topic_info MCP tool."""
         try:
             result = self._rpc("tools/call", {
                 "name": "get_topic_info",
@@ -210,6 +182,42 @@ class ZsxqClient:
         except Exception:
             logger.debug("Failed to get detail for topic %s", topic_id)
         return None
+
+    def download_file(self, file_id: str, dest_path: str) -> bool:
+        """Download a ZSXQ file via call_zsxq_api. Returns True on success."""
+        try:
+            result = self._rpc("tools/call", {
+                "name": "call_zsxq_api",
+                "arguments": json.dumps({
+                    "method": "GET",
+                    "path": f"/files/{file_id}/download",
+                }),
+            })
+            content = result.get("content", [])
+            for item in content:
+                if item.get("type") == "text":
+                    data = json.loads(item["text"])
+                    if isinstance(data, dict):
+                        # Response may contain download_url or base64 content
+                        download_url = data.get("download_url") or data.get("url", "")
+                        if download_url:
+                            # Fetch the actual file from the download URL
+                            resp = requests.get(download_url, timeout=120)
+                            resp.raise_for_status()
+                            with open(dest_path, "wb") as f:
+                                f.write(resp.content)
+                            return True
+                        # Maybe base64 encoded content
+                        b64 = data.get("content") or data.get("data", "")
+                        if b64:
+                            import base64
+                            with open(dest_path, "wb") as f:
+                                f.write(base64.b64decode(b64))
+                            return True
+            logger.warning("call_zsxq_api download returned unexpected format for file %s", file_id)
+        except Exception as e:
+            logger.warning("Failed to download file %s via call_zsxq_api: %s", file_id, e)
+        return False
 
     def _fetch_via_search(self, last_sync_time: Optional[int],
                            limit: int) -> list[dict]:
@@ -376,20 +384,23 @@ def extract_files(topic: dict) -> list[dict]:
     for f in candidates:
         if not isinstance(f, dict):
             continue
-        # Try all known URL field names
+        # Try all known URL field names, then construct from file_id
         url = (
             f.get("download_url") or f.get("url") or f.get("file_url")
             or f.get("source_url") or f.get("link") or ""
         )
-        # Try all known name field names
+        file_id = f.get("file_id", "")
+        if not url and file_id:
+            # Construct ZSXQ file download URL via MCP
+            url = f"zsxq://file/{file_id}"
         name = (
             f.get("name") or f.get("file_name") or f.get("filename")
             or f.get("title") or ""
         ) or url.split("/")[-1].split("?")[0]
         if url and url not in {fl["url"] for fl in files}:
-            logger.debug("Extracted file: url=%s, name=%s, raw_keys=%s", url[:80], name, list(f.keys())[:10])
-            files.append({"url": url, "filename": name or "file"})
+            logger.info("Extracted file: name=%s, url=%s", name, url[:80])
+            files.append({"url": url, "filename": name or "file", "file_id": file_id})
     if candidates and not files:
-        logger.warning("File candidates found but no valid URL — candidate keys: %s",
+        logger.warning("File candidates found but no valid identifier: %s",
                        [{k: str(v)[:60] for k, v in c.items()} for c in candidates[:3]])
     return files

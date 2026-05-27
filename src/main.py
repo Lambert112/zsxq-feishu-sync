@@ -105,7 +105,7 @@ def run() -> None:
             # Each topic
             for topic in day_topics:
                 try:
-                    topic_blocks = format_topic_to_blocks(topic, feishu_client, doc_id)
+                    topic_blocks = format_topic_to_blocks(topic, feishu_client, doc_id, zsxq_client)
                     blocks.extend(topic_blocks)
                 except Exception as e:
                     logger.warning("格式化帖子失败 (topic_id=%s): %s",

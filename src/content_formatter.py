@@ -123,6 +123,7 @@ def format_topic_to_blocks(
     topic: dict,
     feishu: FeishuClient,
     doc_id: str,
+    zsxq_client=None,
 ) -> list[dict]:
     """Convert a single ZSXQ topic to Feishu document blocks."""
     blocks = []
@@ -181,7 +182,7 @@ def format_topic_to_blocks(
     if files:
         logger.info("发现 %d 个文件 (topic_id=%s)", len(files), topic.get("topic_id", "?"))
     for f_info in files[:5]:
-        local_path = _download(f_info["url"], temp_dir)
+        local_path = _download_zsxq_file(f_info, temp_dir, zsxq_client)
         if local_path:
             file_token = feishu.upload_media(
                 local_path, f_info["filename"],
@@ -222,7 +223,6 @@ def _download(url: str, dest_dir: str) -> Optional[str]:
         resp.raise_for_status()
         content_type = resp.headers.get("Content-Type", "")
         if "text/html" in content_type or "application/json" in content_type:
-            # Might be an auth redirect — log and skip
             snippet = resp.text[:200] if len(resp.text) < 500 else resp.text[:200] + "..."
             logger.warning("下载返回非二进制内容 (%s): %s", content_type, snippet)
             if len(resp.content) < 1024:
@@ -235,6 +235,31 @@ def _download(url: str, dest_dir: str) -> Optional[str]:
     except Exception:
         logger.warning("下载失败: %s", url, exc_info=True)
         return None
+
+
+def _download_zsxq_file(f_info: dict, dest_dir: str, zsxq_client=None) -> Optional[str]:
+    """Download a ZSXQ file (regular URL or zsxq://file/{id}). Returns local path."""
+    os.makedirs(dest_dir, exist_ok=True)
+    url = f_info.get("url", "")
+    filename = f_info.get("filename", "file")
+    filepath = os.path.join(dest_dir, filename)
+
+    # ZSXQ internal file — use call_zsxq_api to download
+    if url.startswith("zsxq://file/") and zsxq_client:
+        file_id = f_info.get("file_id", url.split("/")[-1])
+        logger.info("Downloading ZSXQ file %s via MCP API...", file_id)
+        if zsxq_client.download_file(file_id, filepath):
+            if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
+                logger.info("ZSXQ file downloaded: %s (%d bytes)", filename, os.path.getsize(filepath))
+                return filepath
+            else:
+                logger.warning("ZSXQ file download produced empty/missing file")
+                _safe_remove(filepath)
+                return None
+        logger.warning("ZSXQ MCP download failed for file %s, trying direct URL...", file_id)
+
+    # Regular HTTP download
+    return _download(url, dest_dir)
 
 
 def _safe_remove(path: str) -> None:
