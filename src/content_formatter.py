@@ -168,13 +168,18 @@ def format_topic_to_blocks(
     for img in images[:10]:
         local_path = _download(img["url"], temp_dir)
         if local_path:
+            # Sanitize filename — ZSXQ URLs sometimes contain query params in the name
+            clean_name = _sanitize_filename(img.get("filename", "image"))
             file_token = feishu.upload_media(
-                local_path, img["filename"],
+                local_path, clean_name,
                 parent_type="docx_image",
                 parent_node=doc_id,
             )
             if file_token:
+                logger.info("图片上传成功: token=%s", file_token)
                 blocks.append(build_image(file_token))
+            else:
+                logger.warning("图片上传失败: %s", clean_name)
             _safe_remove(local_path)
 
     # Files (PDF etc.)
@@ -263,6 +268,23 @@ def _download_zsxq_file(f_info: dict, dest_dir: str, zsxq_client=None) -> Option
     if url.startswith("http"):
         return _download(url, dest_dir)
     return None
+
+
+def _sanitize_filename(name: str) -> str:
+    """Clean up a filename, removing URL query params and special chars."""
+    import re
+    # Take only the part before any '?' or '&' (URL query params)
+    name = name.split("?")[0].split("&")[0]
+    # Remove or replace problematic characters
+    name = re.sub(r'[<>:"/\\|?*]', '_', name)
+    name = name.strip()
+    # Ensure we have a valid extension
+    if '.' not in name[-10:]:
+        name += '.jpg'
+    # Max 100 chars
+    if len(name) > 100:
+        name = name[:50] + '...' + name[-47:]
+    return name or 'image.jpg'
 
 
 def _safe_remove(path: str) -> None:
