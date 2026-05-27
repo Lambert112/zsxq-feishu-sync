@@ -185,17 +185,13 @@ class ZsxqClient:
 
     def download_file(self, file_id: str, dest_path: str) -> bool:
         """Download a ZSXQ file via call_zsxq_api. Returns True on success."""
-        # Log the call_zsxq_api tool schema for debugging
-        tool_schema = self._tools.get("call_zsxq_api", {})
-        logger.info("call_zsxq_api schema: %s",
-                    json.dumps(tool_schema.get("inputSchema", {}), ensure_ascii=False)[:500])
+        group_id = config.ZSXQ_GROUP_ID
 
-        # Try multiple argument formats — the MCP tool may expect different names
+        # call_zsxq_api requires path starting with /v2/ or /v3/
         for args in [
-            {"url": f"/files/{file_id}/download", "method": "GET"},
-            {"path": f"/files/{file_id}/download", "method": "get"},
-            {"api": f"/files/{file_id}/download", "method": "GET"},
-            {"endpoint": f"/files/{file_id}/download"},
+            {"method": "GET", "path": f"/v2/files/{file_id}/download"},
+            {"method": "GET", "path": f"/v2/groups/{group_id}/files/{file_id}/download"},
+            {"method": "GET", "path": f"/v2/files/{file_id}/download_url"},
         ]:
             try:
                 result = self._rpc("tools/call", {
@@ -352,6 +348,7 @@ def _lookup_images(obj: dict) -> list[dict]:
                 _collect(d[sub], depth + 1)
 
     import ast
+    import re
 
     def _parse_url(val):
         """Parse a URL from a value that may be a string dict like \"{'url': '...'}\"."""
@@ -360,8 +357,12 @@ def _lookup_images(obj: dict) -> list[dict]:
                 d = ast.literal_eval(val)
                 if isinstance(d, dict):
                     return d.get("url", "")
-            except (ValueError, SyntaxError):
-                pass
+            except Exception as e:
+                logger.debug("ast.literal_eval failed for %s...: %s", val[:100], e)
+            # Fallback: regex extract https?:// URL from the string
+            match = re.search(r"https?://[^\s'\"]+", val)
+            if match:
+                return match.group(0)
         return val if isinstance(val, str) else ""
 
     _collect(obj)
