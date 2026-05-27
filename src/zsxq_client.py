@@ -98,21 +98,19 @@ class ZsxqClient:
             logger.warning("MCP auth check failed: %s", e)
             return False
 
-    def fetch_new_topics(self, last_topic_id: Optional[str] = None,
+    def fetch_new_topics(self, last_sync_time: Optional[int] = None,
                          limit: Optional[int] = None) -> list[dict]:
-        """Fetch recent topics via MCP, returning chronological (oldest first)."""
+        """Fetch topics newer than last_sync_time (Unix timestamp)."""
         self._init()
 
         limit = limit or 20
-        # Use get_group_topics if available, fall back to search
         if "get_group_topics" in self._tools:
-            return self._fetch_via_group_topics(last_topic_id, limit)
+            return self._fetch_via_group_topics(last_sync_time, limit)
         if "search_topics" in self._tools:
-            return self._fetch_via_search(last_topic_id, limit)
-        # Generic tool call attempt
-        return self._fetch_via_any_tool(last_topic_id, limit)
+            return self._fetch_via_search(last_sync_time, limit)
+        return self._fetch_via_any_tool(last_sync_time, limit)
 
-    def _fetch_via_group_topics(self, last_topic_id: Optional[str],
+    def _fetch_via_group_topics(self, last_sync_time: Optional[int],
                                  limit: int) -> list[dict]:
         """Fetch using get_group_topics, then enrich with get_topic_info."""
         result = self._rpc("tools/call", {
@@ -146,7 +144,14 @@ class ZsxqClient:
             time.sleep(0.3)  # gentle rate limit
 
         logger.info("Parsed %d topics from get_group_topics", len(topics))
-        return self._filter_and_sort(topics, last_topic_id, limit)
+        if topics:
+            # Log keys of first topic to help debug image/file field names
+            sample = topics[0]
+            logger.info("Sample topic keys: %s", list(sample.keys()))
+            img_count = len(extract_images(sample))
+            file_count = len(extract_files(sample))
+            logger.info("Sample topic: %d images, %d files found", img_count, file_count)
+        return self._filter_new(topics, last_sync_time, limit)
 
     def _get_topic_detail(self, topic_id: str) -> Optional[dict]:
         """Fetch full topic detail via get_topic_info MCP tool."""
@@ -162,17 +167,22 @@ class ZsxqClient:
                     if isinstance(data, dict):
                         # Unwrap {"success": true, "topic": {...}}
                         if "topic" in data:
-                            return data["topic"]
+                            topic = data["topic"]
+                            logger.debug("Topic detail keys: %s, has images=%s, has files=%s",
+                                        list(topic.keys()),
+                                        "images" in topic,
+                                        "files" in topic)
+                            return topic
+                        logger.debug("Topic detail (no 'topic' wrapper) keys: %s", list(data.keys()))
                         return data
         except Exception:
             logger.debug("Failed to get detail for topic %s", topic_id)
         return None
 
-    def _fetch_via_search(self, last_topic_id: Optional[str],
+    def _fetch_via_search(self, last_sync_time: Optional[int],
                            limit: int) -> list[dict]:
         """Fetch using search_topics MCP tool."""
         topics = []
-        # Search with common keywords to get recent content
         for keyword in ["", " ", "."]:
             result = self._rpc("tools/call", {
                 "name": "search_topics",
@@ -189,9 +199,9 @@ class ZsxqClient:
                         pass
             if len(topics) >= limit:
                 break
-        return self._filter_and_sort(topics, last_topic_id, limit)
+        return self._filter_new(topics, last_sync_time, limit)
 
-    def _fetch_via_any_tool(self, last_topic_id: Optional[str],
+    def _fetch_via_any_tool(self, last_sync_time: Optional[int],
                              limit: int) -> list[dict]:
         """Try any available tool that returns topics."""
         topics = []
@@ -219,23 +229,25 @@ class ZsxqClient:
                     break
             except ZsxqError:
                 continue
-        return self._filter_and_sort(topics, last_topic_id, limit)
+        return self._filter_new(topics, last_sync_time, limit)
 
-    def _filter_and_sort(self, topics: list[dict],
-                         last_topic_id: Optional[str],
-                         limit: int) -> list[dict]:
-        """Filter out already-synced topics, dedupe, sort chronologically."""
+    def _filter_new(self, topics: list[dict],
+                    last_sync_time: Optional[int],
+                    limit: int) -> list[dict]:
+        """Keep only topics newer than last_sync_time, dedupe, sort newest-first."""
         seen = set()
         filtered = []
         for t in topics:
             tid = t.get("topic_id", "")
-            if tid == last_topic_id:
-                break
-            if tid and tid not in seen:
-                seen.add(tid)
-                filtered.append(t)
+            if not tid or tid in seen:
+                continue
+            seen.add(tid)
+            create_time_str = t.get("create_time", "")
+            create_ts = _parse_time_to_ts(create_time_str)
+            if last_sync_time is not None and create_ts <= last_sync_time:
+                continue
+            filtered.append(t)
 
-        # Sort by create_time descending (newest first)
         filtered.sort(key=lambda t: t.get("create_time", ""), reverse=True)
         return filtered[:limit]
 
@@ -252,24 +264,82 @@ class ZsxqError(Exception):
 # Media extraction helpers (same as before)
 # ------------------------------------------------------------------
 
-def extract_images(topic: dict) -> list[dict]:
+def _parse_time_to_ts(create_time_str: str) -> int:
+    """Parse ZSXQ create_time string to Unix timestamp."""
+    from datetime import datetime, timezone, timedelta
+    if not create_time_str:
+        return 0
+    try:
+        if "T" in create_time_str:
+            dt = datetime.fromisoformat(create_time_str)
+        else:
+            dt = datetime.strptime(create_time_str, "%Y-%m-%d %H:%M:%S")
+        if dt.tzinfo:
+            return int(dt.timestamp())
+        # Assume Beijing time if no tz
+        CST = timezone(timedelta(hours=8))
+        return int(dt.replace(tzinfo=CST).timestamp())
+    except (ValueError, TypeError):
+        return 0
+
+
+def _lookup_images(obj: dict) -> list[dict]:
+    """Recursively collect image dicts from known ZSXQ nesting patterns."""
     images = []
-    # Images are at topic root (flat structure)
-    for img in (topic.get("images", []) or []):
-        if isinstance(img, dict):
-            url = img.get("large_url") or img.get("original_url") or img.get("url", "")
-            name = img.get("name", "") or url.split("/")[-1].split("?")[0]
-            if url:
-                images.append({"url": url, "filename": name})
+    candidates = []
+
+    def _collect(d, depth=0):
+        if depth > 3 or not isinstance(d, dict):
+            return
+        for key in ("images", "image_list", "pictures", "attachments"):
+            vals = d.get(key)
+            if isinstance(vals, list):
+                candidates.extend(vals)
+        for sub in ("talk", "question", "answer", "author", "owner"):
+            if isinstance(d.get(sub), dict):
+                _collect(d[sub], depth + 1)
+
+    _collect(obj)
+    for img in candidates:
+        if not isinstance(img, dict):
+            continue
+        url = img.get("large_url") or img.get("original_url") or img.get("url", "")
+        name = img.get("name", "") or img.get("file_name", "") or url.split("/")[-1].split("?")[0]
+        if url and url not in {i["url"] for i in images}:
+            logger.debug("Extracted image: url=%s, name=%s", url[:80], name)
+            images.append({"url": url, "filename": name or "image"})
+    if candidates and not images:
+        logger.debug("Image candidates found but no valid URLs: %s",
+                     [{k: str(v)[:50] for k, v in c.items() if k != "url"} for c in candidates[:3]])
     return images
 
 
+def extract_images(topic: dict) -> list[dict]:
+    return _lookup_images(topic)
+
+
 def extract_files(topic: dict) -> list[dict]:
+    """Extract file attachments from topic, checking nested locations."""
     files = []
-    for f in (topic.get("files", []) or []):
-        if isinstance(f, dict):
-            url = f.get("download_url") or f.get("url", "")
-            name = f.get("name", "") or url.split("/")[-1].split("?")[0]
-            if url:
-                files.append({"url": url, "filename": name})
+    candidates = []
+
+    def _collect(d, depth=0):
+        if depth > 3 or not isinstance(d, dict):
+            return
+        for key in ("files", "file_list", "attachments"):
+            vals = d.get(key)
+            if isinstance(vals, list):
+                candidates.extend(vals)
+        for sub in ("talk", "question", "answer"):
+            if isinstance(d.get(sub), dict):
+                _collect(d[sub], depth + 1)
+
+    _collect(topic)
+    for f in candidates:
+        if not isinstance(f, dict):
+            continue
+        url = f.get("download_url") or f.get("url", "")
+        name = f.get("name", "") or f.get("file_name", "") or url.split("/")[-1].split("?")[0]
+        if url and url not in {fl["url"] for fl in files}:
+            files.append({"url": url, "filename": name or "file"})
     return files

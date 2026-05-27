@@ -16,7 +16,7 @@ def load_state() -> dict:
         try:
             with open(STATE_FILE, "r") as f:
                 state = json.load(f)
-            logger.info("加载同步状态: last_topic_id=%s", state.get("last_topic_id"))
+            logger.info("加载同步状态: last_sync_time=%s", state.get("last_sync_time"))
             return state
         except (json.JSONDecodeError, IOError):
             logger.warning("同步状态文件损坏，使用默认状态")
@@ -27,11 +27,11 @@ def save_state(state: dict) -> None:
     """Persist sync state to disk."""
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
-    logger.info("保存同步状态: last_topic_id=%s", state.get("last_topic_id"))
+    logger.info("保存同步状态: last_sync_time=%s", state.get("last_sync_time"))
 
 
-def update_last_topic(topic_id: str, state: dict | None = None) -> dict:
-    """Update state with a new last_topic_id and return it.
+def update_sync_time(state: dict | None = None) -> dict:
+    """Update state with the current time as last_sync_time.
 
     If state is provided, it is updated in-place and saved.
     Otherwise, state is loaded from disk first.
@@ -39,7 +39,6 @@ def update_last_topic(topic_id: str, state: dict | None = None) -> dict:
     import time
     if state is None:
         state = load_state()
-    state["last_topic_id"] = topic_id
     state["last_sync_time"] = int(time.time())
     save_state(state)
     return state
@@ -47,7 +46,6 @@ def update_last_topic(topic_id: str, state: dict | None = None) -> dict:
 
 def _default_state() -> dict:
     return {
-        "last_topic_id": None,
         "last_sync_time": None,
         "current_doc_id": None,
         "current_doc_month": None,  # e.g. "2026-5"

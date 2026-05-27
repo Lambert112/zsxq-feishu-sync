@@ -35,7 +35,7 @@ def run() -> None:
 
     # ---- Load state ----
     state = state_mgr.load_state()
-    last_topic_id = None if config.FORCE_FULL_SYNC else state.get("last_topic_id")
+    last_sync_time = None if config.FORCE_FULL_SYNC else state.get("last_sync_time")
 
     # ---- Init clients ----
     zsxq_client = ZsxqClient()
@@ -48,9 +48,9 @@ def run() -> None:
         sys.exit(1)
 
     # ---- Fetch new topics ----
-    limit = config.INITIAL_SYNC_LIMIT if last_topic_id is None else None
+    limit = config.INITIAL_SYNC_LIMIT if last_sync_time is None else None
     try:
-        topics = zsxq_client.fetch_new_topics(last_topic_id, limit=limit)
+        topics = zsxq_client.fetch_new_topics(last_sync_time, limit=limit)
     except ZsxqError as e:
         logger.error("获取 ZSXQ 帖子失败: %s", e)
         send_error(f"获取帖子失败: {e}")
@@ -134,8 +134,7 @@ def run() -> None:
 
     # ---- Save final state ----
     if not config.DRY_RUN:
-        latest_topic = topics[-1]
-        state_mgr.update_last_topic(latest_topic.get("topic_id", ""), state)
+        state_mgr.update_sync_time(state)
 
     elapsed = time.time() - start_time
     logger.info("=== 同步完成: %d 条帖子, 耗时 %.1f 秒 ===", total_synced, elapsed)
@@ -150,9 +149,8 @@ def run() -> None:
 
 def _save_progress(state: dict, topics: list, count: int) -> None:
     """Save partial progress so we don't re-sync already-processed topics."""
-    if count > 0 and count <= len(topics):
-        last_processed = topics[count - 1]
-        state_mgr.update_last_topic(last_processed.get("topic_id", ""), state)
+    if count > 0:
+        state_mgr.update_sync_time(state)
 
 
 if __name__ == "__main__":
