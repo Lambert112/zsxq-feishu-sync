@@ -233,16 +233,20 @@ class FeishuClient:
         token = self._get_token()
         url = f"{config.FEISHU_BASE_URL}/drive/v1/medias/upload_all"
 
+        form_data = {
+            "file_name": filename,
+            "size": str(file_size),
+        }
+        if parent_type:
+            form_data["parent_type"] = parent_type
+        if parent_node:
+            form_data["parent_node"] = parent_node
+
         with open(file_path, "rb") as f:
             resp = requests.post(
                 url,
                 headers={"Authorization": f"Bearer {token}"},
-                data={
-                    "file_name": filename,
-                    "parent_type": parent_type,
-                    "parent_node": parent_node or self.folder_token,
-                    "size": str(file_size),
-                },
+                data=form_data,
                 files={"file": (filename, f, "application/octet-stream")},
                 timeout=120,
             )

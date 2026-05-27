@@ -104,8 +104,6 @@ def build_image(file_token: str) -> dict:
         "block_type": 27,
         "image": {
             "token": file_token,
-            "width": 400,
-            "height": 300,
         },
     }
 
@@ -176,21 +174,17 @@ def format_topic_to_blocks(
         local_path = _download(img["url"], temp_dir)
         if local_path:
             clean_name = _sanitize_filename(img.get("filename", "image"))
+            # Try without parent_type to get a generic file token
             file_token = feishu.upload_media(
                 local_path, clean_name,
-                parent_type="docx_image",
-                parent_node=doc_id,
+                parent_type="",
+                parent_node="",
             )
             if file_token:
                 logger.info("图片上传成功: token=%s", file_token)
-                # Try appending image as standalone to see if it works
-                try:
-                    feishu.append_blocks(doc_id, [build_image(file_token)])
-                    logger.info("图片block追加成功")
-                except Exception as e:
-                    logger.warning("图片block单独追加失败: %s", e)
+                blocks.append(build_image(file_token))
             else:
-                logger.warning("图片上传失败: %s", clean_name)
+                logger.warning("图片上传失败")
             _safe_remove(local_path)
 
     # Files (PDF etc.)
