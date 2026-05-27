@@ -184,14 +184,14 @@ class ZsxqClient:
         return None
 
     def download_file(self, file_id: str, dest_path: str) -> bool:
-        """Download a ZSXQ file via call_zsxq_api. Returns True on success."""
+        """Download a ZSXQ file. Tries call_zsxq_api then direct API call."""
         group_id = config.ZSXQ_GROUP_ID
 
-        # call_zsxq_api requires path starting with /v2/ or /v3/
+        # Approach 1: call_zsxq_api with various paths
         for args in [
+            {"method": "POST", "path": "/v2/files/download", "body": {"file_id": file_id}},
             {"method": "GET", "path": f"/v2/files/{file_id}/download"},
             {"method": "GET", "path": f"/v2/groups/{group_id}/files/{file_id}/download"},
-            {"method": "GET", "path": f"/v2/files/{file_id}/download_url"},
         ]:
             try:
                 result = self._rpc("tools/call", {
@@ -224,6 +224,34 @@ class ZsxqClient:
             except Exception as e:
                 logger.warning("Download processing failed for args=%s: %s",
                                json.dumps(args)[:80], e)
+
+        # Approach 2: Direct HTTP call to ZSXQ API with MCP API key
+        try:
+            api_url = f"https://api.zsxq.com/v2/files/{file_id}/download"
+            headers = {
+                "User-Agent": "zsxq-sync/1.0",
+                "X-API-Key": config.ZSXQ_MCP_API_KEY,
+                "Cookie": f"mcp_api_key={config.ZSXQ_MCP_API_KEY}",
+            }
+            resp = requests.get(api_url, headers=headers, timeout=120, stream=True)
+            if resp.ok and len(resp.content) > 0:
+                content_type = resp.headers.get("Content-Type", "")
+                if "json" in content_type:
+                    data = resp.json()
+                    dl_url = data.get("download_url") or data.get("url", "")
+                    if dl_url:
+                        resp2 = requests.get(dl_url, timeout=120)
+                        resp2.raise_for_status()
+                        with open(dest_path, "wb") as f:
+                            f.write(resp2.content)
+                        return True
+                else:
+                    with open(dest_path, "wb") as f:
+                        f.write(resp.content)
+                    return True
+            logger.warning("Direct API download failed: HTTP %s", resp.status_code)
+        except Exception as e:
+            logger.warning("Direct API download exception: %s", e)
 
         return False
 
@@ -351,7 +379,11 @@ def _lookup_images(obj: dict) -> list[dict]:
     import re
 
     def _parse_url(val):
-        """Parse a URL from a value that may be a string dict like \"{'url': '...'}\"."""
+        """Parse a URL from a dict, string-dict, or string value."""
+        # Direct dict: {'url': 'https://...'}
+        if isinstance(val, dict):
+            return val.get("url", "") or val.get("large_url", "") or val.get("original_url", "")
+        # String representation: "{'url': 'https://...'}"
         if isinstance(val, str) and val.strip().startswith("{"):
             try:
                 d = ast.literal_eval(val)
@@ -363,7 +395,10 @@ def _lookup_images(obj: dict) -> list[dict]:
             match = re.search(r"https?://[^\s'\"]+", val)
             if match:
                 return match.group(0)
-        return val if isinstance(val, str) else ""
+        # Plain URL string
+        if isinstance(val, str) and val.startswith("http"):
+            return val
+        return ""
 
     _collect(obj)
     for img in candidates:
