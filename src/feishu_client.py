@@ -60,13 +60,20 @@ class FeishuClient:
             headers=headers, timeout=30,
         )
         if not resp.ok:
+            try:
+                body = resp.json()
+                feishu_code = body.get("code", resp.status_code)
+                feishu_msg = body.get("msg", resp.text[:200])
+            except Exception:
+                feishu_code = resp.status_code
+                feishu_msg = resp.text[:200]
             logger.error(
-                "Feishu HTTP %s on %s %s: %s",
-                resp.status_code, method, path, resp.text[:500],
+                "Feishu HTTP %s on %s %s: code=%s msg=%s",
+                resp.status_code, method, path, feishu_code, feishu_msg,
             )
             raise FeishuError(
-                resp.status_code,
-                f"{method} {path} failed: HTTP {resp.status_code}",
+                feishu_code,
+                f"{method} {path} failed: [{feishu_code}] {feishu_msg}",
                 resp.status_code,
             )
         data = resp.json()
@@ -118,12 +125,15 @@ class FeishuClient:
         data = self._request(
             "GET",
             f"/docx/v1/documents/{document_id}/blocks",
-            params={"page_size": 1},
+            params={"page_size": 50},
         )
         items = data.get("items", [])
-        if items:
-            return items[0]["block_id"]
-        # Fallback: document_id itself can be used as the page block reference
+        for item in items:
+            if item.get("block_type") == 1:  # page block
+                logger.info("Found page block: %s", item["block_id"])
+                return item["block_id"]
+        # If no page block found, try document_id as parent
+        logger.warning("No page block found, using document_id as parent")
         return document_id
 
     def create_monthly_doc(self, year: int, month: int) -> str:
@@ -143,10 +153,8 @@ class FeishuClient:
         if parent_block_id is None:
             parent_block_id = self.get_page_block_id(document_id)
 
-        # Feishu API has a limit on block children per request (typically 50)
-        # But document blocks have a more restrictive limit for descendants
-        # We send all blocks in one call for simplicity
         MAX_PER_BATCH = 20
+        MAX_RETRIES = 3
         created = []
 
         for i in range(0, len(blocks), MAX_PER_BATCH):
@@ -161,15 +169,30 @@ class FeishuClient:
             )
             logger.info("First block sample: %s",
                         json.dumps(batch[0], ensure_ascii=False)[:500])
-            data = self._request(
-                "POST",
-                f"/docx/v1/documents/{document_id}/blocks/{parent_block_id}/children"
-                f"?document_revision_id=-1",
-                body={"children": batch, "index": 0},
-            )
-            created.extend(data.get("children", []))
+
+            for attempt in range(MAX_RETRIES):
+                try:
+                    data = self._request(
+                        "POST",
+                        f"/docx/v1/documents/{document_id}/blocks/{parent_block_id}/children"
+                        f"?document_revision_id=-1",
+                        body={"children": batch, "index": 0},
+                    )
+                    created.extend(data.get("children", []))
+                    break
+                except FeishuError as e:
+                    if e.http_status == 400 and attempt < MAX_RETRIES - 1:
+                        wait = 2 ** attempt
+                        logger.warning(
+                            "Batch append failed (attempt %d/%d), retrying in %ds...",
+                            attempt + 1, MAX_RETRIES, wait,
+                        )
+                        time.sleep(wait)
+                    else:
+                        raise
+
             if i + MAX_PER_BATCH < len(blocks):
-                time.sleep(0.5)
+                time.sleep(1)
 
         return created
 

@@ -120,12 +120,12 @@ def run() -> None:
                     logger.info("已同步: %s, %d 条帖子, %d 个块",
                                 date_str, len(day_topics), len(blocks))
                 except FeishuError as e:
-                    logger.error("追加文档块失败: %s", e)
-                    send_error(f"追加文档块失败 (日期={date_str}): {e}")
-                    # Don't exit — save partial progress
+                    logger.error("追加文档块失败 (日期=%s): %s", date_str, e)
+                    # Save partial progress and continue with next date
                     if total_synced > 0:
                         _save_progress(state, topics, total_synced)
-                    sys.exit(1)
+                    send_error(f"追加文档块失败 (日期={date_str}, 已同步={total_synced}条): {e}")
+                    continue
 
             total_synced += len(day_topics)
             last_date_str = date_str
