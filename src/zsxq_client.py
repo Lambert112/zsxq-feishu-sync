@@ -145,12 +145,23 @@ class ZsxqClient:
 
         logger.info("Parsed %d topics from get_group_topics", len(topics))
         if topics:
-            # Log keys of first topic to help debug image/file field names
             sample = topics[0]
             logger.info("Sample topic keys: %s", list(sample.keys()))
+            # Log any topic that has non-empty images/files to understand structure
+            for t in topics:
+                imgs = t.get("images") or []
+                fls = t.get("files") or []
+                if imgs or fls:
+                    logger.info("Topic %s has images=%s, files=%s",
+                                t.get("topic_id"),
+                                json.dumps(imgs[:1], ensure_ascii=False)[:300] if imgs else "[]",
+                                json.dumps(fls[:1], ensure_ascii=False)[:300] if fls else "[]")
+                    break
+            else:
+                logger.info("No topics have images or files in raw fields — checking nested locations")
             img_count = len(extract_images(sample))
             file_count = len(extract_files(sample))
-            logger.info("Sample topic: %d images, %d files found", img_count, file_count)
+            logger.info("Sample topic extract: %d images, %d files", img_count, file_count)
         return self._filter_new(topics, last_sync_time, limit)
 
     def _get_topic_detail(self, topic_id: str) -> Optional[dict]:
