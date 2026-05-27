@@ -97,6 +97,7 @@ def run() -> None:
         for date_str in sorted(date_groups.keys(), reverse=True):
             day_topics = date_groups[date_str]
             blocks = []
+            image_refs = []  # (url, filename) for later refill
 
             # Date header (H1)
             blocks.extend(build_date_header_block(date_str))
@@ -104,8 +105,11 @@ def run() -> None:
             # Each topic
             for topic in day_topics:
                 try:
-                    topic_blocks = format_topic_to_blocks(topic, feishu_client, doc_id, zsxq_client)
+                    topic_blocks, topic_images = format_topic_to_blocks(
+                        topic, feishu_client, doc_id, zsxq_client,
+                    )
                     blocks.extend(topic_blocks)
+                    image_refs.extend(topic_images)
                 except Exception as e:
                     logger.warning("格式化帖子失败 (topic_id=%s): %s",
                                    topic.get("topic_id", "?"), e)
@@ -116,12 +120,17 @@ def run() -> None:
                             doc_id, len(blocks), date_str, len(day_topics))
             else:
                 try:
-                    feishu_client.append_blocks(doc_id, blocks)
+                    created = feishu_client.append_blocks(doc_id, blocks)
                     logger.info("已同步: %s, %d 条帖子, %d 个块",
                                 date_str, len(day_topics), len(blocks))
+
+                    # Refill image placeholder blocks with uploaded tokens
+                    if image_refs:
+                        _refill_images(
+                            feishu_client, doc_id, created, image_refs, config.TEMP_DIR,
+                        )
                 except FeishuError as e:
                     logger.error("追加文档块失败 (日期=%s): %s", date_str, e)
-                    # Save partial progress and continue with next date
                     if total_synced > 0:
                         _save_progress(state, topics, total_synced)
                     send_error(f"追加文档块失败 (日期={date_str}, 已同步={total_synced}条): {e}")
@@ -144,6 +153,55 @@ def run() -> None:
     # ---- Cleanup temp files ----
     if os.path.exists(config.TEMP_DIR):
         shutil.rmtree(config.TEMP_DIR)
+
+
+def _refill_images(feishu_client: FeishuClient, doc_id: str,
+                   created_blocks: list[dict], image_refs: list[dict],
+                   temp_dir: str) -> None:
+    """Upload images and refill placeholder image blocks."""
+    from .content_formatter import _download, _safe_remove
+
+    # Find created image blocks (block_type=27) and match with image_refs
+    img_block_ids = [
+        b["block_id"] for b in created_blocks
+        if b.get("block_type") == 27
+    ]
+
+    if not img_block_ids:
+        logger.warning("No image blocks found in created blocks, skipping refill")
+        return
+
+    if len(img_block_ids) != len(image_refs):
+        logger.warning(
+            "Image block count mismatch: %d blocks vs %d refs",
+            len(img_block_ids), len(image_refs),
+        )
+
+    logger.info("Refilling %d image blocks...", min(len(img_block_ids), len(image_refs)))
+
+    for i, img_ref in enumerate(image_refs):
+        if i >= len(img_block_ids):
+            break
+        block_id = img_block_ids[i]
+        url = img_ref["url"]
+        filename = img_ref["filename"]
+
+        local_path = _download(url, temp_dir)
+        if not local_path:
+            logger.warning("Image download failed, skipping: %s", url[:80])
+            continue
+
+        file_token = feishu_client.upload_media(
+            local_path, filename,
+            parent_type="docx_image",
+            parent_node=doc_id,
+        )
+        _safe_remove(local_path)
+
+        if file_token:
+            feishu_client.replace_image(doc_id, block_id, file_token)
+        else:
+            logger.warning("Image upload failed for block %s", block_id)
 
 
 def _save_progress(state: dict, topics: list, count: int) -> None:

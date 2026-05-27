@@ -220,6 +220,28 @@ class FeishuClient:
         return children
 
     # ------------------------------------------------------------------
+    # Block update
+    # ------------------------------------------------------------------
+
+    def replace_image(self, document_id: str, block_id: str,
+                      file_token: str) -> bool:
+        """Replace an image block's token (refill after initial creation)."""
+        try:
+            self._request(
+                "PATCH",
+                f"/docx/v1/documents/{document_id}/blocks/{block_id}"
+                f"?document_revision_id=-1",
+                body={
+                    "replace_image": {"token": file_token},
+                },
+            )
+            logger.info("Image block %s refilled with token %s", block_id, file_token)
+            return True
+        except FeishuError as e:
+            logger.error("Replace image failed for block %s: %s", block_id, e)
+            return False
+
+    # ------------------------------------------------------------------
     # Media upload
     # ------------------------------------------------------------------
 

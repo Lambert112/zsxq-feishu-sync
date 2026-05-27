@@ -99,13 +99,14 @@ def build_divider() -> dict:
     return {"block_type": 22, "divider": {}}
 
 
+def build_image_placeholder() -> dict:
+    """Create an empty image block — token will be filled later via replace_image."""
+    return {"block_type": 27, "image": {}}
+
+
 def build_image(file_token: str) -> dict:
-    return {
-        "block_type": 27,
-        "image": {
-            "token": file_token,
-        },
-    }
+    """Build an image block with token (for direct creation)."""
+    return {"block_type": 27, "image": {"token": file_token}}
 
 
 def build_file(file_token: str, name: str) -> dict:
@@ -129,9 +130,14 @@ def format_topic_to_blocks(
     feishu: FeishuClient,
     doc_id: str,
     zsxq_client=None,
-) -> list[dict]:
-    """Convert a single ZSXQ topic to Feishu document blocks."""
+) -> tuple[list[dict], list[dict]]:
+    """Convert a single ZSXQ topic to Feishu document blocks.
+
+    Returns (blocks, image_refs) where image_refs are {url, filename}
+    for images that need to be uploaded and refilled after block creation.
+    """
     blocks = []
+    image_refs = []
 
     # Divider
     blocks.append(build_divider())
@@ -166,26 +172,16 @@ def format_topic_to_blocks(
 
     temp_dir = config.TEMP_DIR
 
-    # Images
+    # Images — create placeholder blocks first, upload and refill later
     images = zsxq.extract_images(topic)
     if images:
         logger.info("发现 %d 张图片 (topic_id=%s)", len(images), topic.get("topic_id", "?"))
     for img in images[:10]:
-        local_path = _download(img["url"], temp_dir)
-        if local_path:
-            clean_name = _sanitize_filename(img.get("filename", "image"))
-            # Try without parent_type to get a generic file token
-            file_token = feishu.upload_media(
-                local_path, clean_name,
-                parent_type="",
-                parent_node="",
-            )
-            if file_token:
-                logger.info("图片上传成功: token=%s", file_token)
-                blocks.append(build_image(file_token))
-            else:
-                logger.warning("图片上传失败")
-            _safe_remove(local_path)
+        blocks.append(build_image_placeholder())
+        image_refs.append({
+            "url": img["url"],
+            "filename": _sanitize_filename(img.get("filename", "image")),
+        })
 
     # Files (PDF etc.)
     files = zsxq.extract_files(topic)
