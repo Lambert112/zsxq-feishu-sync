@@ -73,7 +73,10 @@ def run() -> None:
     # ---- Sync each month group ----
     total_synced = 0
     last_date_str = ""
-    for (year, month), date_groups in sorted(grouped.items(), reverse=True):
+    is_first_sync = last_sync_time is None
+    # Sort ascending (oldest first) because we insert at index=0.
+    # Oldest gets inserted first and pushed down; newest lands on top.
+    for (year, month), date_groups in sorted(grouped.items()):
         month_key = f"{year}-{month}"
         try:
             if (state.get("current_doc_month") == month_key
@@ -94,13 +97,14 @@ def run() -> None:
             send_error(f"飞书文档操作失败: {e}")
             sys.exit(1)
 
-        for date_str in sorted(date_groups.keys(), reverse=True):
+        for date_str in sorted(date_groups.keys()):
             day_topics = date_groups[date_str]
             blocks = []
             image_refs = []  # (url, filename) for later refill
 
-            # Date header (H1)
-            blocks.extend(build_date_header_block(date_str))
+            # Date header (H1) — only for first sync to avoid duplication
+            if is_first_sync:
+                blocks.extend(build_date_header_block(date_str))
 
             # Each topic
             for topic in day_topics:

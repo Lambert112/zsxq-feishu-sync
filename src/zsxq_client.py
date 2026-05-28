@@ -187,8 +187,9 @@ class ZsxqClient:
         """Download a ZSXQ file. Tries multiple approaches."""
         group_id = config.ZSXQ_GROUP_ID
 
-        # Approach 1: call_zsxq_api — first get file info, then try download
+        # Approach 1: call_zsxq_api — get download URL, then download the file
         for args in [
+            {"method": "GET", "path": f"/v2/files/{file_id}/download_url"},
             {"method": "GET", "path": f"/v2/files/{file_id}"},
             {"method": "GET", "path": f"/v2/groups/{group_id}/files/{file_id}"},
             {"method": "GET", "path": f"/v2/files/{file_id}/url"},
@@ -203,7 +204,16 @@ class ZsxqClient:
                     if item.get("type") == "text":
                         data = json.loads(item["text"])
                         if isinstance(data, dict):
-                            download_url = data.get("download_url") or data.get("url", "")
+                            # download_url may be at top level or nested in data.resp_data
+                            inner = data.get("data") or data.get("resp_data") or {}
+                            if isinstance(inner, str):
+                                inner = {}
+                            download_url = (
+                                data.get("download_url")
+                                or data.get("url", "")
+                                or inner.get("download_url", "")
+                                or inner.get("url", "")
+                            )
                             if download_url:
                                 resp = requests.get(download_url, timeout=120)
                                 resp.raise_for_status()
