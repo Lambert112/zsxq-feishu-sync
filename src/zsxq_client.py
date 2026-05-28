@@ -202,7 +202,8 @@ class ZsxqClient:
                 content = result.get("content", [])
                 for item in content:
                     if item.get("type") == "text":
-                        data = json.loads(item["text"])
+                        raw_text = item["text"]
+                        data = json.loads(raw_text)
                         if isinstance(data, dict):
                             # download_url may be at top level or nested in data.resp_data
                             inner = data.get("data") or data.get("resp_data") or {}
@@ -226,6 +227,8 @@ class ZsxqClient:
                                 with open(dest_path, "wb") as f:
                                     f.write(base64.b64decode(b64))
                                 return True
+                            logger.info("call_zsxq_api raw response for %s: %s",
+                                        args["path"], raw_text[:500])
                 logger.info("call_zsxq_api with args %s returned no downloadable content",
                             json.dumps(args)[:80])
             except ZsxqError as e:
