@@ -197,7 +197,7 @@ class ZsxqClient:
             try:
                 result = self._rpc("tools/call", {
                     "name": "call_zsxq_api",
-                    "arguments": json.dumps(args),
+                    "arguments": args,
                 })
                 content = result.get("content", [])
                 for item in content:
