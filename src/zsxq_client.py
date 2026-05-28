@@ -202,18 +202,20 @@ class ZsxqClient:
                 content = result.get("content", [])
                 for item in content:
                     if item.get("type") == "text":
-                        raw_text = item["text"]
-                        data = json.loads(raw_text)
+                        data = json.loads(item["text"])
                         if isinstance(data, dict):
-                            # download_url may be at top level or nested in data.resp_data
-                            inner = data.get("data") or data.get("resp_data") or {}
-                            if isinstance(inner, str):
-                                inner = {}
+                            # Response: {success, body: {succeeded, resp_data: {download_url}}}
+                            body = data.get("body") or {}
+                            if isinstance(body, str):
+                                body = {}
+                            resp_data = body.get("resp_data") or data.get("resp_data") or {}
+                            if isinstance(resp_data, str):
+                                resp_data = {}
                             download_url = (
-                                data.get("download_url")
+                                resp_data.get("download_url", "")
+                                or data.get("download_url", "")
+                                or body.get("download_url", "")
                                 or data.get("url", "")
-                                or inner.get("download_url", "")
-                                or inner.get("url", "")
                             )
                             if download_url:
                                 resp = requests.get(download_url, timeout=120)
@@ -227,8 +229,6 @@ class ZsxqClient:
                                 with open(dest_path, "wb") as f:
                                     f.write(base64.b64decode(b64))
                                 return True
-                            logger.info("call_zsxq_api raw response for %s: %s",
-                                        args["path"], raw_text[:500])
                 logger.info("call_zsxq_api with args %s returned no downloadable content",
                             json.dumps(args)[:80])
             except ZsxqError as e:
