@@ -109,7 +109,13 @@ def build_image(file_token: str) -> dict:
     return {"block_type": 27, "image": {"token": file_token}}
 
 
+def build_file_placeholder() -> dict:
+    """Create an empty file block — token will be filled later via replace_file."""
+    return {"block_type": 23, "file": {}}
+
+
 def build_file(file_token: str, name: str) -> dict:
+    """Build a file block with token (for direct replacement, not children API)."""
     return {
         "block_type": 23,
         "file": {"token": file_token, "name": name},
@@ -130,11 +136,12 @@ def format_topic_to_blocks(
     feishu: FeishuClient,
     doc_id: str,
     zsxq_client=None,
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict], list[dict], list[dict]]:
     """Convert a single ZSXQ topic to Feishu document blocks.
 
-    Returns (blocks, image_refs) where image_refs are {url, filename}
-    for images that need to be uploaded and refilled after block creation.
+    Returns (blocks, image_refs, file_refs) where:
+    - image_refs are {url, filename} for images that need upload + refill
+    - file_refs are {url, filename, file_id} for files that need download + upload + refill
     """
     blocks = []
     image_refs = []
@@ -183,23 +190,20 @@ def format_topic_to_blocks(
             "filename": _sanitize_filename(img.get("filename", "image")),
         })
 
-    # Files (PDF etc.)
+    # Files (PDF etc.) — create placeholder blocks, upload and refill later
     files = zsxq.extract_files(topic)
+    file_refs = []
     if files:
         logger.info("发现 %d 个文件 (topic_id=%s)", len(files), topic.get("topic_id", "?"))
     for f_info in files[:5]:
-        local_path = _download_zsxq_file(f_info, temp_dir, zsxq_client)
-        if local_path:
-            file_token = feishu.upload_media(
-                local_path, f_info["filename"],
-                parent_type="docx_file",
-                parent_node=doc_id,
-            )
-            if file_token:
-                blocks.append(build_file(file_token, f_info["filename"]))
-            _safe_remove(local_path)
+        blocks.append(build_file_placeholder())
+        file_refs.append({
+            "url": f_info["url"],
+            "filename": _sanitize_filename(f_info.get("filename", "file")),
+            "file_id": f_info.get("file_id", ""),
+        })
 
-    return blocks, image_refs
+    return blocks, image_refs, file_refs
 
 
 # ------------------------------------------------------------------
