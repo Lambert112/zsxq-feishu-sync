@@ -223,16 +223,31 @@ def _refill_files(feishu_client: FeishuClient, doc_id: str,
     """Upload files and refill placeholder file blocks."""
     from .content_formatter import _download_zsxq_file, _safe_remove
 
-    # Find created file blocks (block_type=23) and match with file_refs
-    file_block_ids = [
-        b["block_id"] for b in created_blocks
-        if b.get("block_type") == 23
+    # Find view blocks (block_type=33, wrapping file blocks) in created_blocks
+    view_blocks = [
+        b for b in created_blocks if b.get("block_type") == 33
     ]
 
-    if not file_block_ids:
+    if not view_blocks:
         block_types = set(b.get("block_type") for b in created_blocks)
-        logger.warning("No file blocks found in created blocks (types: %s), skipping refill",
+        logger.warning("No view/file blocks found in created blocks (types: %s), skipping refill",
                        sorted(block_types))
+        return
+
+    # Get actual file block IDs from inside view blocks
+    file_block_ids = []
+    for vb in view_blocks:
+        try:
+            children = feishu_client.get_block_children(doc_id, vb["block_id"])
+            for child in children:
+                if child.get("block_type") == 23:
+                    file_block_ids.append(child["block_id"])
+                    break
+        except FeishuError:
+            logger.warning("Failed to get children of view block %s", vb["block_id"])
+
+    if not file_block_ids:
+        logger.warning("No file blocks found inside view blocks, skipping refill")
         return
 
     logger.info("Refilling %d file blocks...", min(len(file_block_ids), len(file_refs)))
