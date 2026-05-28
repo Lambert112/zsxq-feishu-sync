@@ -124,9 +124,20 @@ def run() -> None:
                             doc_id, len(blocks), date_str, len(day_topics))
             else:
                 try:
-                    created = feishu_client.append_blocks(doc_id, blocks)
-                    logger.info("已同步: %s, %d 条帖子, %d 个块",
-                                date_str, len(day_topics), len(blocks))
+                    # File blocks must be appended separately (1770001 if mixed)
+                    file_blocks = [b for b in blocks if b.get("block_type") == 23]
+                    text_blocks = [b for b in blocks if b.get("block_type") != 23]
+
+                    created = feishu_client.append_blocks(doc_id, text_blocks) if text_blocks else []
+                    for fb in file_blocks:
+                        try:
+                            feishu_client.append_blocks(doc_id, [fb])
+                        except FeishuError as e:
+                            logger.warning("文件块追加失败 (%s): %s",
+                                           fb.get("file", {}).get("name", "?"), e)
+
+                    logger.info("已同步: %s, %d 条帖子, %d 个块 (+%d 文件)",
+                                date_str, len(day_topics), len(text_blocks), len(file_blocks))
 
                     # Refill image placeholder blocks with uploaded tokens
                     if image_refs:
