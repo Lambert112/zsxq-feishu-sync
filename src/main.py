@@ -241,7 +241,6 @@ def _refill_files(feishu_client: FeishuClient, doc_id: str,
         if i >= len(file_block_ids):
             break
         block_id = file_block_ids[i]
-        url = file_ref["url"]
         filename = file_ref["filename"]
 
         local_path = _download_zsxq_file(file_ref, temp_dir, zsxq_client)
@@ -249,10 +248,11 @@ def _refill_files(feishu_client: FeishuClient, doc_id: str,
             logger.warning("File download failed, skipping: %s", filename)
             continue
 
+        # Upload with file block as parent_node (Feishu requirement)
         file_token = feishu_client.upload_media(
             local_path, filename,
             parent_type="docx_file",
-            parent_node=doc_id,
+            parent_node=block_id,
         )
         _safe_remove(local_path)
 

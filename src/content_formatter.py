@@ -110,8 +110,8 @@ def build_image(file_token: str) -> dict:
 
 
 def build_file_placeholder() -> dict:
-    """Create an empty file block — token will be filled later via replace_file."""
-    return {"block_type": 23, "file": {}}
+    """Create an empty file block with empty token — filled later via replace_file."""
+    return {"block_type": 23, "file": {"token": ""}}
 
 
 def build_file(file_token: str, name: str) -> dict:
