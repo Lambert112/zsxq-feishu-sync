@@ -230,7 +230,9 @@ def _refill_files(feishu_client: FeishuClient, doc_id: str,
     ]
 
     if not file_block_ids:
-        logger.warning("No file blocks found in created blocks, skipping refill")
+        block_types = set(b.get("block_type") for b in created_blocks)
+        logger.warning("No file blocks found in created blocks (types: %s), skipping refill",
+                       sorted(block_types))
         return
 
     logger.info("Refilling %d file blocks...", min(len(file_block_ids), len(file_refs)))
