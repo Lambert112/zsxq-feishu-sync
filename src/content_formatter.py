@@ -199,7 +199,7 @@ def format_topic_to_blocks(
                 blocks.append(build_file(file_token, f_info["filename"]))
             _safe_remove(local_path)
 
-    return blocks
+    return blocks, image_refs
 
 
 # ------------------------------------------------------------------
