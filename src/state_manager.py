@@ -50,4 +50,5 @@ def _default_state() -> dict:
         "current_doc_id": None,
         "current_doc_month": None,  # e.g. "2026-5"
         "last_date_added": None,     # e.g. "2026-05-26"
+        "synced_dates": [],          # dates that already have H3 headers in the doc
     }

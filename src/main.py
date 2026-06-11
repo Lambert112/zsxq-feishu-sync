@@ -72,7 +72,6 @@ def run() -> None:
     # ---- Sync each month group ----
     total_synced = 0
     last_date_str = ""
-    is_first_sync = last_sync_time is None
     for (year, month), date_groups in sorted(grouped.items()):
         month_key = f"{year}-{month}"
         try:
@@ -99,9 +98,12 @@ def run() -> None:
             image_refs = []
             file_refs = []
 
-            # Date header (H3) — only for first sync to avoid duplication
-            if is_first_sync:
+            # Date header (H3) — only if this date hasn't been synced before
+            synced_dates = state.get("synced_dates", [])
+            if date_str not in synced_dates:
                 blocks.extend(build_date_header_block(date_str))
+                synced_dates.append(date_str)
+                state["synced_dates"] = synced_dates
 
             # Each topic
             for topic in day_topics:
