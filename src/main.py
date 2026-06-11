@@ -128,50 +128,52 @@ def run() -> None:
                 state["date_headers"] = date_headers
                 logger.info("新建 H3: %s -> %s", date_str, h3_id)
 
-            # ── Step 2: Build post blocks (no H3 included) ──
-            blocks = []
-            image_refs = []
-            file_refs = []
-
+            # ── Step 2: Append each topic individually (oldest first) ──
+            # Per-topic append guarantees correct sort: oldest inserted
+            # first at index=0, then pushed down by each newer topic.
+            synced_count = 0
             for topic in day_topics:
                 try:
                     tb, ti, tf = format_topic_to_blocks(
                         topic, feishu_client, doc_id, zsxq_client,
                     )
-                    blocks.extend(tb)
-                    image_refs.extend(ti)
-                    file_refs.extend(tf)
                 except Exception as e:
                     logger.warning("格式化失败 (topic_id=%s): %s",
                                    topic.get("topic_id", "?"), e)
-
-            if not blocks:
-                continue
-
-            # ── Step 3: Append posts UNDER the H3 ──
-            if config.DRY_RUN:
-                logger.info("[DRY-RUN] %s → H3 %s: %d条帖子, %d个块",
-                            date_str, h3_id[:12], len(day_topics), len(blocks))
-            else:
-                try:
-                    created = feishu_client.append_blocks(
-                        doc_id, blocks, parent_block_id=h3_id,
-                    )
-                    logger.info("已同步: %s, %d 条帖子, %d 个块",
-                                date_str, len(day_topics), len(blocks))
-
-                    if image_refs:
-                        _refill_images(feishu_client, doc_id, created,
-                                       image_refs, config.TEMP_DIR)
-                    if file_refs:
-                        _refill_files(feishu_client, doc_id, created,
-                                      file_refs, config.TEMP_DIR, zsxq_client)
-                except FeishuError as e:
-                    logger.error("追加失败 (日期=%s): %s", date_str, e)
                     continue
 
-            total_synced += len(day_topics)
-            time.sleep(1)
+                if not tb:
+                    continue
+
+                if config.DRY_RUN:
+                    logger.info("[DRY-RUN] %s → H3 %s: topic=%s, %d个块",
+                                date_str, h3_id[:12],
+                                topic.get("topic_id",""), len(tb))
+                    synced_count += 1
+                    continue
+
+                try:
+                    created = feishu_client.append_blocks(
+                        doc_id, tb, parent_block_id=h3_id,
+                    )
+
+                    if ti:
+                        _refill_images(feishu_client, doc_id, created,
+                                       ti, config.TEMP_DIR)
+                    if tf:
+                        _refill_files(feishu_client, doc_id, created,
+                                      tf, config.TEMP_DIR, zsxq_client)
+                    synced_count += 1
+                except FeishuError as e:
+                    logger.error("追加失败 (topic=%s): %s",
+                                 topic.get("topic_id", "?"), e)
+                    continue
+
+                time.sleep(0.5)
+
+            if synced_count > 0:
+                logger.info("已同步: %s, %d 条帖子", date_str, synced_count)
+                total_synced += synced_count
 
     # ── Save state ────────────────────────────────
     if not config.DRY_RUN:
