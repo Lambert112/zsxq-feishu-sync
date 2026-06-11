@@ -51,7 +51,7 @@ def main():
             ],
         }
     })
-    table_id = r2["table"]["table_id"]
+    table_id = r2["table_id"]
 
     # 3. Add sample records
     samples = [
