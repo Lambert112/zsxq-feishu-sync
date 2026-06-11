@@ -44,24 +44,23 @@ def download_file(url, dest_path):
         return False
 
 
-def upload_media(file_path, filename, parent_type="bitable_image", parent_node=""):
+def upload_media(file_path, filename):
     """Upload to Feishu Drive, return file_token."""
     token = get_token()
     size = os.path.getsize(file_path)
+    if size == 0:
+        logger.warning("Empty file, skipping: %s", filename)
+        return None
     url = f"{BASE}/drive/v1/medias/upload_all"
     data = {"file_name": filename, "size": str(size)}
-    if parent_type:
-        data["parent_type"] = parent_type
-    if parent_node:
-        data["parent_node"] = parent_node
     with open(file_path, "rb") as f:
         r = requests.post(url, headers={"Authorization": f"Bearer {token}"},
                           data=data, files={"file": (filename, f, "application/octet-stream")},
                           timeout=120)
-    r.raise_for_status()
     d = r.json()
     if d.get("code", -1) != 0:
-        logger.warning("Upload failed for %s: %s", filename, d.get("msg"))
+        logger.warning("Upload failed for %s: code=%s msg=%s, HTTP=%s, body=%s",
+                       filename, d.get("code"), d.get("msg"), r.status_code, r.text[:500])
         return None
     return d["data"]["file_token"]
 
@@ -213,7 +212,7 @@ def main():
             name = img["name"]
             local = f"temp/{name}"
             if download_file(url, local):
-                ft = upload_media(local, name, parent_type="bitable_image")
+                ft = upload_media(local, name)
                 os.remove(local)
                 if ft:
                     img_tokens.append({"file_token": ft})
@@ -253,7 +252,7 @@ def main():
                         continue
 
             if downloaded:
-                ft = upload_media(local, name, parent_type="bitable_file")
+                ft = upload_media(local, name)
                 os.remove(local)
                 if ft:
                     file_tokens.append({"file_token": ft})
