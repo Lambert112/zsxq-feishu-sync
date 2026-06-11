@@ -93,11 +93,17 @@ def run() -> None:
             send_error(f"飞书文档操作失败: {e}")
             sys.exit(1)
 
-        # ---- Backfill date_headers from existing H3 blocks (one-time migration) ----
-        date_headers = state.get("date_headers", {})
-        if not date_headers:
-            _backfill_date_headers(feishu_client, doc_id, date_headers)
-            state["date_headers"] = date_headers
+        # ---- Date headers tracking ----
+        # Full sync: start fresh (new H3s will be created at doc top)
+        # Incremental: backfill from doc on first run, then use cached IDs
+        if config.FORCE_FULL_SYNC:
+            date_headers = {}
+            state["date_headers"] = {}
+        else:
+            date_headers = state.get("date_headers", {})
+            if not date_headers:
+                _backfill_date_headers(feishu_client, doc_id, date_headers)
+                state["date_headers"] = date_headers
 
         for date_str in sorted(date_groups.keys()):
             day_topics = date_groups[date_str]
