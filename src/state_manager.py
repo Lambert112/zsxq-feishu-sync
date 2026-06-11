@@ -49,5 +49,5 @@ def _default_state() -> dict:
         "last_sync_time": None,
         "current_doc_id": None,
         "current_doc_month": None,
-        "synced_dates": [],
+        "date_headers": {},  # { "2026-06-11": "h3_block_id", ... }
     }

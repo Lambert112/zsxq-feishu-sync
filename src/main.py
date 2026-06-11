@@ -85,7 +85,7 @@ def run() -> None:
                 doc_id = feishu_client.create_monthly_doc(year, month)
                 state["current_doc_id"] = doc_id
                 state["current_doc_month"] = month_key
-                state["synced_dates"] = []  # New month → reset H3 tracking
+                state["date_headers"] = {}  # New month → reset H3 tracking
 
             _ensure_doc_permission(feishu_client, state)
         except FeishuError as e:
@@ -99,12 +99,12 @@ def run() -> None:
             image_refs = []
             file_refs = []
 
-            # Date header (H3) — only if this date hasn't been synced before
-            synced_dates = state.get("synced_dates", [])
-            if date_str not in synced_dates:
+            date_headers = state.get("date_headers", {})
+            is_new_date = date_str not in date_headers
+
+            # Date header (H3) — only if this date is new to the doc
+            if is_new_date:
                 blocks.extend(build_date_header_block(date_str))
-                synced_dates.append(date_str)
-                state["synced_dates"] = synced_dates
 
             # Each topic
             for topic in day_topics:
@@ -121,11 +121,25 @@ def run() -> None:
                     continue
 
             if config.DRY_RUN:
-                logger.info("[DRY-RUN] 将向文档 %s 添加 %d 个块 (日期: %s, 帖子: %d)",
-                            doc_id, len(blocks), date_str, len(day_topics))
+                target = date_headers.get(date_str, "doc_root")
+                logger.info("[DRY-RUN] 将向文档 %s 添加 %d 个块 (日期: %s, 帖子: %d, parent: %s)",
+                            doc_id, len(blocks), date_str, len(day_topics), target)
             else:
                 try:
-                    created = feishu_client.append_blocks(doc_id, blocks)
+                    if is_new_date:
+                        # Insert at doc root (top of document)
+                        created = feishu_client.append_blocks(doc_id, blocks)
+                        # Capture H3 block_id for future incremental syncs
+                        for b in created:
+                            if b.get("block_type") == 5:  # heading3
+                                date_headers[date_str] = b["block_id"]
+                                state["date_headers"] = date_headers
+                                logger.info("New date H3: %s -> %s", date_str, b["block_id"])
+                                break
+                    else:
+                        # Insert under existing date H3 heading
+                        h3_id = date_headers[date_str]
+                        created = feishu_client.append_blocks(doc_id, blocks, parent_block_id=h3_id)
                     logger.info("已同步: %s, %d 条帖子, %d 个块",
                                 date_str, len(day_topics), len(blocks))
 
