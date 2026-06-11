@@ -88,7 +88,7 @@ def zsxq_rpc(method, params):
 def fetch_topics(limit=5):
     zsxq_rpc("initialize", {"protocolVersion":"2024-11-05","capabilities":{},
                              "clientInfo":{"name":"bitable-sample","version":"1.0"}})
-    zsxq_rpc("tools/list")
+    zsxq_rpc("tools/list", {})
 
     result = zsxq_rpc("tools/call", {"name":"get_group_topics",
                        "arguments":{"group_id":GROUP_ID, "count":min(limit,30)}})
