@@ -58,6 +58,8 @@ def run() -> None:
 
     if not topics:
         logger.info("没有新增帖子，同步结束")
+        # Still ensure manager permission on current doc
+        _ensure_doc_permission(feishu_client, state)
         return
 
     logger.info("发现 %d 条新帖子", len(topics))
@@ -83,14 +85,9 @@ def run() -> None:
                 doc_id = feishu_client.create_monthly_doc(year, month)
                 state["current_doc_id"] = doc_id
                 state["current_doc_month"] = month_key
-                # New month doc → reset H3 tracking
-            if not (state.get("current_doc_month") == month_key
-                    and state.get("current_doc_id")):
-                state["synced_dates"] = []
+                state["synced_dates"] = []  # New month → reset H3 tracking
 
-            # Always ensure user has manage permission (idempotent)
-            if config.FEISHU_USER_ID:
-                feishu_client.add_document_manager(doc_id, config.FEISHU_USER_ID)
+            _ensure_doc_permission(feishu_client, state)
         except FeishuError as e:
             logger.error("创建月度文档失败: %s", e)
             send_error(f"飞书文档操作失败: {e}")
@@ -271,6 +268,19 @@ def _refill_files(feishu_client: FeishuClient, doc_id: str,
             feishu_client.replace_file(doc_id, block_id, file_token)
         else:
             logger.warning("File upload failed for block %s", block_id)
+
+
+def _ensure_doc_permission(feishu_client: FeishuClient, state: dict) -> None:
+    """Ensure the current doc has user as manager (idempotent)."""
+    if not config.FEISHU_USER_ID:
+        return
+    doc_id = state.get("current_doc_id")
+    if not doc_id:
+        return
+    try:
+        feishu_client.add_document_manager(doc_id, config.FEISHU_USER_ID)
+    except Exception as e:
+        logger.warning("添加文档管理权限失败: %s", e)
 
 
 def _save_progress(state: dict, topics: list, count: int) -> None:
