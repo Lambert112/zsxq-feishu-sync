@@ -88,6 +88,13 @@ def build_h2(text: str) -> dict:
     }
 
 
+def build_h3(text: str) -> dict:
+    return {
+        "block_type": 5,
+        "heading3": {"elements": build_text_elements(text)},
+    }
+
+
 def build_text(text: str) -> dict:
     return {
         "block_type": 2,
@@ -99,19 +106,9 @@ def build_divider() -> dict:
     return {"block_type": 22, "divider": {}}
 
 
-def build_image_placeholder() -> dict:
-    """Create an empty image block — token will be filled later via replace_image."""
-    return {"block_type": 27, "image": {}}
-
-
 def build_image(file_token: str) -> dict:
     """Build an image block with token (for direct creation)."""
     return {"block_type": 27, "image": {"token": file_token}}
-
-
-def build_file_placeholder() -> dict:
-    """Create an empty file block with empty token — filled later via replace_file."""
-    return {"block_type": 23, "file": {"token": ""}}
 
 
 def build_file(file_token: str, name: str) -> dict:
@@ -123,8 +120,8 @@ def build_file(file_token: str, name: str) -> dict:
 
 
 def build_date_header_block(date_str: str) -> list[dict]:
-    """Build date header block (H1)."""
-    return [build_h1(date_str)]
+    """Build date header block (H3)."""
+    return [build_h3(date_str)]
 
 
 # ------------------------------------------------------------------
@@ -136,15 +133,13 @@ def format_topic_to_blocks(
     feishu: FeishuClient,
     doc_id: str,
     zsxq_client=None,
-) -> tuple[list[dict], list[dict], list[dict]]:
+) -> list[dict]:
     """Convert a single ZSXQ topic to Feishu document blocks.
 
-    Returns (blocks, image_refs, file_refs) where:
-    - image_refs are {url, filename} for images that need upload + refill
-    - file_refs are {url, filename, file_id} for files that need download + upload + refill
+    Images and files are downloaded, uploaded to Feishu Drive, and
+    embedded with tokens directly — no post-creation refill step needed.
     """
     blocks = []
-    image_refs = []
 
     # Divider
     blocks.append(build_divider())
@@ -176,34 +171,51 @@ def format_topic_to_blocks(
     if text:
         blocks.append(build_text(text))
 
-
     temp_dir = config.TEMP_DIR
 
-    # Images — create placeholder blocks first, upload and refill later
+    # Images — download → upload → create block with token
     images = zsxq.extract_images(topic)
     if images:
         logger.info("发现 %d 张图片 (topic_id=%s)", len(images), topic.get("topic_id", "?"))
     for img in images[:10]:
-        blocks.append(build_image_placeholder())
-        image_refs.append({
-            "url": img["url"],
-            "filename": _sanitize_filename(img.get("filename", "image")),
-        })
+        filename = _sanitize_filename(img.get("filename", "image"))
+        local_path = _download(img["url"], temp_dir)
+        if not local_path:
+            blocks.append(build_text(f"[图片下载失败: {filename}]"))
+            continue
+        file_token = feishu.upload_media(
+            local_path, filename,
+            parent_type="docx_image",
+            parent_node=doc_id,
+        )
+        _safe_remove(local_path)
+        if file_token:
+            blocks.append(build_image(file_token))
+        else:
+            blocks.append(build_text(f"[图片上传失败: {filename}]"))
 
-    # Files (PDF etc.) — create placeholder blocks, upload and refill later
+    # Files (PDF etc.) — download → upload → create block with token
     files = zsxq.extract_files(topic)
-    file_refs = []
     if files:
         logger.info("发现 %d 个文件 (topic_id=%s)", len(files), topic.get("topic_id", "?"))
     for f_info in files[:5]:
-        blocks.append(build_file_placeholder())
-        file_refs.append({
-            "url": f_info["url"],
-            "filename": _sanitize_filename(f_info.get("filename", "file")),
-            "file_id": f_info.get("file_id", ""),
-        })
+        filename = _sanitize_filename(f_info.get("filename", "file"))
+        local_path = _download_zsxq_file(f_info, temp_dir, zsxq_client)
+        if not local_path:
+            blocks.append(build_text(f"[文件下载失败: {filename}]"))
+            continue
+        file_token = feishu.upload_media(
+            local_path, filename,
+            parent_type="docx_file",
+            parent_node=doc_id,
+        )
+        _safe_remove(local_path)
+        if file_token:
+            blocks.append(build_file(file_token, filename))
+        else:
+            blocks.append(build_text(f"[文件上传失败: {filename}]"))
 
-    return blocks, image_refs, file_refs
+    return blocks
 
 
 # ------------------------------------------------------------------

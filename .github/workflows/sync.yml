@@ -2,8 +2,9 @@ name: ZSXQ to Feishu Sync
 
 on:
   schedule:
-    # Every 30 minutes (at 7 and 37 past each hour, to avoid :00/:30 peak)
-    - cron: '7,37 * * * *'
+    # Every 30 minutes — using separate entries for reliability
+    - cron: '7 * * * *'
+    - cron: '37 * * * *'
   workflow_dispatch:
     inputs:
       full_sync:
