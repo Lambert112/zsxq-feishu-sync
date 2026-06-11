@@ -98,12 +98,13 @@ def run() -> None:
             send_error(f"飞书文档操作失败: {e}")
             sys.exit(1)
 
-        # ── Process each date (oldest first so newest lands on top) ──
+        # ── Process each date ──
+        # Sort oldest-first: each batch inserts at index=0, so later
+        # batches (newer) push earlier ones down → newest on top.
         for date_str in sorted(date_groups.keys()):
             day_topics = sorted(
                 date_groups[date_str],
                 key=lambda t: t.get("create_time", ""),
-                reverse=True,
             )
 
             # ── Step 1: Ensure H3 header exists ──
