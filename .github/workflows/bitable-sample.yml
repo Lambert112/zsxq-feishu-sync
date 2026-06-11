@@ -1,0 +1,23 @@
+name: Create Bitable Sample
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+      - name: Create sample bitable
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_FOLDER_TOKEN: ${{ secrets.FEISHU_FOLDER_TOKEN }}
+          ZSXQ_MCP_API_KEY: ${{ secrets.ZSXQ_MCP_API_KEY }}
+          ZSXQ_GROUP_ID: ${{ secrets.ZSXQ_GROUP_ID }}
+        run: python src/create_bitable_sample.py
