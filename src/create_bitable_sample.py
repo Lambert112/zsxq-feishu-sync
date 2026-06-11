@@ -32,10 +32,9 @@ def feishu(method, path, body=None):
 def main():
     logger.info("=== 创建 Bitable 样板 ===")
 
-    # 1. Create bitable app
+    # 1. Create bitable app (no folder_token to avoid perm issues)
     r = feishu("POST", "/bitable/v1/apps", {
         "name": "知识星球同步 - 样板",
-        "folder_token": FOLDER_TOKEN,
     })
     app_token = r["app"]["app_token"]
     logger.info("Bitable app: %s", app_token)
