@@ -94,16 +94,16 @@ def run() -> None:
             sys.exit(1)
 
         # ---- Date headers tracking ----
-        # Full sync: start fresh (new H3s will be created at doc top)
-        # Incremental: backfill from doc on first run, then use cached IDs
+        # Full sync: wipe document and start fresh
         if config.FORCE_FULL_SYNC:
+            logger.info("全量同步：清空文档旧内容...")
+            feishu_client.clear_document(doc_id)
             date_headers = {}
-            state["date_headers"] = {}
         else:
-            date_headers = state.get("date_headers", {})
-            if not date_headers:
-                _backfill_date_headers(feishu_client, doc_id, date_headers)
-                state["date_headers"] = date_headers
+            # Incremental: backfill existing H3 block IDs
+            date_headers = {}
+            _backfill_date_headers(feishu_client, doc_id, date_headers)
+        state["date_headers"] = date_headers
 
         for date_str in sorted(date_groups.keys()):
             day_topics = date_groups[date_str]
@@ -202,8 +202,8 @@ def _backfill_date_headers(feishu_client: FeishuClient, doc_id: str,
                 text = ""
                 for e in elements:
                     text += e.get("text_run", {}).get("content", "")
-                if text and text not in date_headers:
-                    date_headers[text] = b["block_id"]
+                if text:
+                    date_headers[text] = b["block_id"]  # always overwrite → keep last
                     logger.info("Found existing H3: %s -> %s", text, b["block_id"])
     except Exception as e:
         logger.warning("Failed to backfill date_headers: %s", e)
