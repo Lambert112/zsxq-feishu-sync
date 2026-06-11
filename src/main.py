@@ -83,6 +83,9 @@ def run() -> None:
                 doc_id = feishu_client.create_monthly_doc(year, month)
                 state["current_doc_id"] = doc_id
                 state["current_doc_month"] = month_key
+                # New month doc → need to re-add manager and reset H3 tracking
+                state["manager_added"] = False
+                state["synced_dates"] = []
 
             if config.FEISHU_USER_ID and not state.get("manager_added"):
                 if feishu_client.add_document_manager(doc_id, config.FEISHU_USER_ID):
