@@ -181,8 +181,8 @@ def main():
         "table": {
             "name": "帖子",
             "fields": [
-                {"field_name": "时间", "type": 1},
                 {"field_name": "日期", "type": 1},
+                {"field_name": "时间", "type": 1},
                 {"field_name": "正文", "type": 1},
                 {"field_name": "图片", "type": 17},
                 {"field_name": "文件", "type": 17},
@@ -261,8 +261,8 @@ def main():
                 time.sleep(0.5)
 
         records.append({"fields": {
-            "时间": time_str,
             "日期": date_str,
+            "时间": time_str,
             "正文": text or "(无文本)",
             "图片": img_tokens if img_tokens else None,
             "文件": file_tokens if file_tokens else None,
