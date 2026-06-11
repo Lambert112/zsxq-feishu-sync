@@ -93,13 +93,18 @@ def run() -> None:
             send_error(f"飞书文档操作失败: {e}")
             sys.exit(1)
 
+        # ---- Backfill date_headers from existing H3 blocks (one-time migration) ----
+        date_headers = state.get("date_headers", {})
+        if not date_headers:
+            _backfill_date_headers(feishu_client, doc_id, date_headers)
+            state["date_headers"] = date_headers
+
         for date_str in sorted(date_groups.keys()):
             day_topics = date_groups[date_str]
             blocks = []
             image_refs = []
             file_refs = []
 
-            date_headers = state.get("date_headers", {})
             is_new_date = date_str not in date_headers
 
             # Date header (H3) — only if this date is new to the doc
@@ -177,6 +182,25 @@ def run() -> None:
     # ---- Cleanup temp files ----
     if os.path.exists(config.TEMP_DIR):
         shutil.rmtree(config.TEMP_DIR)
+
+
+def _backfill_date_headers(feishu_client: FeishuClient, doc_id: str,
+                           date_headers: dict) -> None:
+    """Scan existing H3 blocks in the doc to populate date_headers (one-time migration)."""
+    try:
+        page_id = feishu_client.get_page_block_id(doc_id)
+        children = feishu_client.get_block_children(doc_id, page_id)
+        for b in children:
+            if b.get("block_type") == 5:  # heading3
+                elements = b.get("heading3", {}).get("elements", [])
+                text = ""
+                for e in elements:
+                    text += e.get("text_run", {}).get("content", "")
+                if text and text not in date_headers:
+                    date_headers[text] = b["block_id"]
+                    logger.info("Found existing H3: %s -> %s", text, b["block_id"])
+    except Exception as e:
+        logger.warning("Failed to backfill date_headers: %s", e)
 
 
 def _refill_images(feishu_client: FeishuClient, doc_id: str,
