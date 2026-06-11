@@ -63,7 +63,6 @@ def run() -> None:
     logger.info("发现 %d 条新帖子", len(topics))
 
     # ---- Group topics by month and date ----
-    # Structure: { (2026, 5): { "2026-05-26": [topic, ...], ... } }
     grouped = defaultdict(lambda: defaultdict(list))
     for topic in topics:
         month_key = get_month_key(topic.get("create_time", ""))
@@ -74,8 +73,6 @@ def run() -> None:
     total_synced = 0
     last_date_str = ""
     is_first_sync = last_sync_time is None
-    # Sort ascending (oldest first) because we insert at index=0.
-    # Oldest gets inserted first and pushed down; newest lands on top.
     for (year, month), date_groups in sorted(grouped.items()):
         month_key = f"{year}-{month}"
         try:
@@ -88,7 +85,6 @@ def run() -> None:
                 state["current_doc_id"] = doc_id
                 state["current_doc_month"] = month_key
 
-            # Try to set the user as document manager
             if config.FEISHU_USER_ID and not state.get("manager_added"):
                 if feishu_client.add_document_manager(doc_id, config.FEISHU_USER_ID):
                     state["manager_added"] = True
@@ -100,6 +96,9 @@ def run() -> None:
         for date_str in sorted(date_groups.keys()):
             day_topics = date_groups[date_str]
             blocks = []
+            image_refs = []
+            file_refs = []
+
             # Date header (H3) — only for first sync to avoid duplication
             if is_first_sync:
                 blocks.extend(build_date_header_block(date_str))
@@ -107,10 +106,12 @@ def run() -> None:
             # Each topic
             for topic in day_topics:
                 try:
-                    topic_blocks = format_topic_to_blocks(
+                    topic_blocks, topic_images, topic_files = format_topic_to_blocks(
                         topic, feishu_client, doc_id, zsxq_client,
                     )
                     blocks.extend(topic_blocks)
+                    image_refs.extend(topic_images)
+                    file_refs.extend(topic_files)
                 except Exception as e:
                     logger.warning("格式化帖子失败 (topic_id=%s): %s",
                                    topic.get("topic_id", "?"), e)
@@ -121,9 +122,20 @@ def run() -> None:
                             doc_id, len(blocks), date_str, len(day_topics))
             else:
                 try:
-                    feishu_client.append_blocks(doc_id, blocks)
+                    created = feishu_client.append_blocks(doc_id, blocks)
                     logger.info("已同步: %s, %d 条帖子, %d 个块",
                                 date_str, len(day_topics), len(blocks))
+
+                    if image_refs:
+                        _refill_images(
+                            feishu_client, doc_id, created, image_refs, config.TEMP_DIR,
+                        )
+
+                    if file_refs:
+                        _refill_files(
+                            feishu_client, doc_id, created, file_refs,
+                            config.TEMP_DIR, zsxq_client,
+                        )
                 except FeishuError as e:
                     logger.error("追加文档块失败 (日期=%s): %s", date_str, e)
                     if total_synced > 0:
@@ -133,7 +145,7 @@ def run() -> None:
 
             total_synced += len(day_topics)
             last_date_str = date_str
-            time.sleep(1)  # Rate limit: pause between dates
+            time.sleep(1)
 
     # ---- Save final state ----
     if not config.DRY_RUN:
@@ -148,6 +160,111 @@ def run() -> None:
     # ---- Cleanup temp files ----
     if os.path.exists(config.TEMP_DIR):
         shutil.rmtree(config.TEMP_DIR)
+
+
+def _refill_images(feishu_client: FeishuClient, doc_id: str,
+                   created_blocks: list[dict], image_refs: list[dict],
+                   temp_dir: str) -> None:
+    """Upload images and refill placeholder image blocks."""
+    from .content_formatter import _download, _safe_remove
+
+    img_block_ids = [
+        b["block_id"] for b in created_blocks
+        if b.get("block_type") == 27
+    ]
+
+    if not img_block_ids:
+        logger.warning("No image blocks found in created blocks, skipping refill")
+        return
+
+    if len(img_block_ids) != len(image_refs):
+        logger.warning(
+            "Image block count mismatch: %d blocks vs %d refs",
+            len(img_block_ids), len(image_refs),
+        )
+
+    logger.info("Refilling %d image blocks...", min(len(img_block_ids), len(image_refs)))
+
+    for i, img_ref in enumerate(image_refs):
+        if i >= len(img_block_ids):
+            break
+        block_id = img_block_ids[i]
+        url = img_ref["url"]
+        filename = img_ref["filename"]
+
+        local_path = _download(url, temp_dir)
+        if not local_path:
+            logger.warning("Image download failed, skipping: %s", url[:80])
+            continue
+
+        file_token = feishu_client.upload_media(
+            local_path, filename,
+            parent_type="docx_image",
+            parent_node=block_id,
+        )
+        _safe_remove(local_path)
+
+        if file_token:
+            feishu_client.replace_image(doc_id, block_id, file_token)
+        else:
+            logger.warning("Image upload failed for block %s", block_id)
+
+
+def _refill_files(feishu_client: FeishuClient, doc_id: str,
+                  created_blocks: list[dict], file_refs: list[dict],
+                  temp_dir: str, zsxq_client=None) -> None:
+    """Upload files and refill placeholder file blocks."""
+    from .content_formatter import _download_zsxq_file, _safe_remove
+
+    view_blocks = [
+        b for b in created_blocks if b.get("block_type") == 33
+    ]
+
+    if not view_blocks:
+        block_types = set(b.get("block_type") for b in created_blocks)
+        logger.warning("No view/file blocks found in created blocks (types: %s), skipping refill",
+                       sorted(block_types))
+        return
+
+    file_block_ids = []
+    for vb in view_blocks:
+        try:
+            children = feishu_client.get_block_children(doc_id, vb["block_id"])
+            for child in children:
+                if child.get("block_type") == 23:
+                    file_block_ids.append(child["block_id"])
+                    break
+        except FeishuError:
+            logger.warning("Failed to get children of view block %s", vb["block_id"])
+
+    if not file_block_ids:
+        logger.warning("No file blocks found inside view blocks, skipping refill")
+        return
+
+    logger.info("Refilling %d file blocks...", min(len(file_block_ids), len(file_refs)))
+
+    for i, file_ref in enumerate(file_refs):
+        if i >= len(file_block_ids):
+            break
+        block_id = file_block_ids[i]
+        filename = file_ref["filename"]
+
+        local_path = _download_zsxq_file(file_ref, temp_dir, zsxq_client)
+        if not local_path:
+            logger.warning("File download failed, skipping: %s", filename)
+            continue
+
+        file_token = feishu_client.upload_media(
+            local_path, filename,
+            parent_type="docx_file",
+            parent_node=block_id,
+        )
+        _safe_remove(local_path)
+
+        if file_token:
+            feishu_client.replace_file(doc_id, block_id, file_token)
+        else:
+            logger.warning("File upload failed for block %s", block_id)
 
 
 def _save_progress(state: dict, topics: list, count: int) -> None:

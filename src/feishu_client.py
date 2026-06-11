@@ -148,8 +148,9 @@ class FeishuClient:
     # ------------------------------------------------------------------
 
     def append_blocks(self, document_id: str, blocks: list[dict],
-                      parent_block_id: Optional[str] = None) -> list[dict]:
-        """Append blocks via descendant API (supports all block types incl. images/files with tokens)."""
+                      parent_block_id: Optional[str] = None,
+                      exclude_rich: bool = False) -> list[dict]:
+        """Append blocks via children API. Rich blocks (image/file) must be placeholders."""
         if parent_block_id is None:
             parent_block_id = self.get_page_block_id(document_id)
 
@@ -174,11 +175,11 @@ class FeishuClient:
                 try:
                     data = self._request(
                         "POST",
-                        f"/docx/v1/documents/{document_id}/blocks/{parent_block_id}/descendant"
+                        f"/docx/v1/documents/{document_id}/blocks/{parent_block_id}/children"
                         f"?document_revision_id=-1",
                         body={"children": batch, "index": 0},
                     )
-                    created.extend(data.get("descendant", []))
+                    created.extend(data.get("children", []))
                     break
                 except FeishuError as e:
                     if e.http_status == 400 and attempt < MAX_RETRIES - 1:
