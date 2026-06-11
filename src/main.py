@@ -83,13 +83,14 @@ def run() -> None:
                 doc_id = feishu_client.create_monthly_doc(year, month)
                 state["current_doc_id"] = doc_id
                 state["current_doc_month"] = month_key
-                # New month doc → need to re-add manager and reset H3 tracking
-                state["manager_added"] = False
+                # New month doc → reset H3 tracking
+            if not (state.get("current_doc_month") == month_key
+                    and state.get("current_doc_id")):
                 state["synced_dates"] = []
 
-            if config.FEISHU_USER_ID and not state.get("manager_added"):
-                if feishu_client.add_document_manager(doc_id, config.FEISHU_USER_ID):
-                    state["manager_added"] = True
+            # Always ensure user has manage permission (idempotent)
+            if config.FEISHU_USER_ID:
+                feishu_client.add_document_manager(doc_id, config.FEISHU_USER_ID)
         except FeishuError as e:
             logger.error("创建月度文档失败: %s", e)
             send_error(f"飞书文档操作失败: {e}")
