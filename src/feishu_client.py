@@ -220,25 +220,18 @@ class FeishuClient:
             page_token = data.get("page_token", "")
         return children
 
-    def clear_document(self, document_id: str) -> None:
-        """Delete all children from the document's page block (full sync cleanup)."""
-        page_id = self.get_page_block_id(document_id)
-        children = self.get_block_children(document_id, page_id)
-        if not children:
-            return
-        BATCH = 50
-        total = len(children)
-        logger.info("Clearing %d blocks from document %s", total, document_id)
-        while total > 0:
-            start = max(0, total - BATCH)
+    def delete_document(self, document_id: str) -> bool:
+        """Delete a document entirely via Drive API."""
+        try:
             self._request(
                 "DELETE",
-                f"/docx/v1/documents/{document_id}/blocks/{page_id}/children/batch_delete",
-                body={"start_index": start, "end_index": total},
+                f"/drive/v1/files/{document_id}?type=docx",
             )
-            if start > 0:
-                time.sleep(1)
-            total = start
+            logger.info("Deleted document: %s", document_id)
+            return True
+        except FeishuError as e:
+            logger.warning("Failed to delete document %s: %s", document_id, e)
+            return False
 
     # ------------------------------------------------------------------
     # Block update
