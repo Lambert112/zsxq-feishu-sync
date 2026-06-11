@@ -1,10 +1,7 @@
 name: ZSXQ to Feishu Sync
 
 on:
-  schedule:
-    # Every 30 minutes — using separate entries for reliability
-    - cron: '7 * * * *'
-    - cron: '37 * * * *'
+  # Scheduled externally via cron-job.org (every 30 min at :00 and :30)
   workflow_dispatch:
     inputs:
       full_sync:
