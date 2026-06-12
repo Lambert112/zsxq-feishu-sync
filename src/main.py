@@ -182,7 +182,7 @@ def run() -> None:
 
     elapsed = time.time() - start_time
     logger.info("=== 同步完成: %d 条帖子, 耗时 %.1f 秒 ===", total_synced, elapsed)
-    send_sync_summary(total_synced, "")
+    send_sync_summary(total_synced, state.get("current_doc_id", ""))
 
     if os.path.exists(config.TEMP_DIR):
         shutil.rmtree(config.TEMP_DIR)

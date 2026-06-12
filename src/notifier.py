@@ -44,7 +44,7 @@ def send_auth_error(detail: str = "") -> None:
     _post(webhook, body)
 
 
-def send_error(message: str) -> None:
+def send_error(message: str, doc_id: str = "") -> None:
     """Send a generic error notification."""
     webhook = config.FEISHU_BOT_WEBHOOK
     if not webhook:
@@ -59,8 +59,10 @@ def send_error(message: str) -> None:
         run_url = f"{github_server}/{github_repo}/actions/runs/{github_run_id}"
 
     text = f"ZSXQ 同步失败\n\n{message}"
+    if doc_id:
+        text += f"\n\n📄 [查看文档](https://larkcommunity.feishu.cn/docx/{doc_id})"
     if run_url:
-        text += f"\n\n[查看日志]({run_url})"
+        text += f"\n\n🔧 [查看日志]({run_url})"
 
     _post(webhook, {
         "msg_type": "text",
@@ -68,19 +70,35 @@ def send_error(message: str) -> None:
     })
 
 
-def send_sync_summary(new_count: int, date_str: str) -> None:
-    """Send a success summary (for significant syncs only)."""
+def send_sync_summary(new_count: int, doc_id: str) -> None:
+    """Send a success summary with document link."""
     webhook = config.FEISHU_BOT_WEBHOOK
     if not webhook:
         return
-
     if new_count == 0:
         return
 
+    doc_url = f"https://larkcommunity.feishu.cn/docx/{doc_id}" if doc_id else ""
+    text = f"知识星球同步完成\n新增帖子：{new_count} 条"
+    if doc_url:
+        text += f"\n\n📄 [查看文档]({doc_url})"
+
     _post(webhook, {
-        "msg_type": "text",
-        "content": {
-            "text": f"知识星球同步完成\n日期：{date_str}\n新增帖子：{new_count} 条"
+        "msg_type": "interactive",
+        "card": {
+            "header": {
+                "title": {"tag": "plain_text", "content": "知识星球同步完成"},
+                "template": "green",
+            },
+            "elements": [
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"新增 **{new_count}** 条帖子\n\n[📄 查看文档]({doc_url})" if doc_url else f"新增 **{new_count}** 条帖子",
+                    },
+                },
+            ],
         },
     })
 
