@@ -205,10 +205,12 @@ def format_topic_to_blocks(
     if files:
         logger.info("发现 %d 个文件 (topic_id=%s)", len(files), topic.get("topic_id", "?"))
     for f_info in files[:5]:
+        name = _sanitize_filename(f_info.get("filename", "file"))
+        blocks.append(build_text(f"[文件类] {name}"))
         blocks.append(build_file_placeholder())
         file_refs.append({
             "url": f_info["url"],
-            "filename": _sanitize_filename(f_info.get("filename", "file")),
+            "filename": name,
             "file_id": f_info.get("file_id", ""),
         })
 
