@@ -94,6 +94,41 @@ class FeishuClient:
             "title": title,
         })
 
+    def transfer_ownership(self, document_id: str, user_id: str) -> bool:
+        """Transfer document ownership to the user (requires drive:drive permission)."""
+        if not user_id:
+            return False
+        member_type = "openid" if user_id.startswith("ou_") else "userid"
+        try:
+            self._request(
+                "POST",
+                f"/drive/v1/permissions/{document_id}/members/transfer_owner?type=docx",
+                body={
+                    "member_type": member_type,
+                    "member_id": user_id,
+                },
+            )
+            logger.info("Transferred ownership of %s to %s", document_id, user_id)
+            return True
+        except FeishuError as e:
+            logger.warning("Failed to transfer ownership of %s: %s", document_id, e)
+            # Fallback: try adding as full_access manager
+            try:
+                self._request(
+                    "POST",
+                    f"/drive/v1/permissions/{document_id}/members?type=docx",
+                    body={
+                        "member_type": member_type,
+                        "member_id": user_id,
+                        "perm": "full_access",
+                    },
+                )
+                logger.info("Added %s as document manager (fallback): %s", user_id, document_id)
+                return True
+            except FeishuError as e2:
+                logger.warning("Fallback add manager also failed: %s", e2)
+                return False
+
     def add_document_manager(self, document_id: str, user_id: str) -> bool:
         """Add a user as full_access manager of a document."""
         if not user_id:
