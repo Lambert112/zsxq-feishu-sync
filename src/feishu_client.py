@@ -51,7 +51,7 @@ class FeishuClient:
         if not config.FEISHU_CHAT_IDS:
             return False
         import json as _json
-        content = _json.dumps({"text": f"<at id=all></at> {text}"}, ensure_ascii=False)
+        content = _json.dumps({"text": f"<at user_id=\"all\">所有人</at> {text}"}, ensure_ascii=False)
         ok = False
         for cid in config.FEISHU_CHAT_IDS:
             try:
