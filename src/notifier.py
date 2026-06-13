@@ -68,31 +68,14 @@ def send_sync_summary(new_count: int, doc_id: str,
 
     doc_url = f"https://larkcommunity.feishu.cn/docx/{doc_id}" if doc_id else ""
 
-    # 1. Summary card with @all
+    # 1. Summary — text message for @all support
+    text = f"知识星球同步完成\n新增 {new_count} 条帖子"
+    if doc_url:
+        text += f"\n\n📄 查看文档: {doc_url}"
+    text += "\n\n<at id=all></at>"
     _post_all({
-        "msg_type": "interactive",
-        "card": {
-            "header": {
-                "title": {"tag": "plain_text", "content": "知识星球同步完成"},
-                "template": "green",
-            },
-            "elements": [
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": f"新增 **{new_count}** 条帖子\n\n[📄 查看文档]({doc_url})" if doc_url else f"新增 **{new_count}** 条帖子",
-                    },
-                },
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": "<at id=all></at>",
-                    },
-                },
-            ],
-        },
+        "msg_type": "text",
+        "content": {"text": text},
     })
 
     # 2. Per-topic full content cards
