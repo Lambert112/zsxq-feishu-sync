@@ -1,0 +1,30 @@
+name: List Bot Chats
+on:
+  workflow_dispatch:
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests
+      - name: List chats
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+        run: |
+          python3 -c "
+          import requests, os
+          r = requests.post('https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal',
+                            json={'app_id':os.environ['FEISHU_APP_ID'],'app_secret':os.environ['FEISHU_APP_SECRET']}, timeout=10)
+          token = r.json()['tenant_access_token']
+          r2 = requests.get('https://open.feishu.cn/open-apis/im/v1/chats?page_size=20',
+                            headers={'Authorization':f'Bearer {token}'}, timeout=10)
+          data = r2.json()
+          print('Code:', data.get('code'))
+          if data.get('code')==0:
+              for chat in data.get('data',{}).get('items',[]):
+                  print(f\"{chat['name']}  →  {chat['chat_id']}\")
+          else:
+              print('Error:', data.get('msg'))
+          "
