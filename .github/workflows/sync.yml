@@ -54,6 +54,7 @@ jobs:
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
           FEISHU_FOLDER_TOKEN: ${{ secrets.FEISHU_FOLDER_TOKEN }}
           FEISHU_BOT_WEBHOOK: ${{ secrets.FEISHU_BOT_WEBHOOK }}
+          FEISHU_BOT_WEBHOOKS: ${{ secrets.FEISHU_BOT_WEBHOOKS }}
           FEISHU_USER_ID: ${{ secrets.FEISHU_USER_ID }}
           FORCE_FULL_SYNC: ${{ github.event.inputs.full_sync }}
         run: python -m src.main

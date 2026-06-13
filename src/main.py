@@ -59,6 +59,24 @@ def run() -> None:
 
     logger.info("发现 %d 条新帖子", len(topics))
 
+    # ── Build topic summaries for notifications ────
+    topic_summaries = []
+    for t in topics:
+        create_time = t.get("create_time", "")
+        date_str = create_time[:10] if "T" in create_time else create_time.split(" ")[0]
+        time_str = create_time[11:16] if "T" in create_time else create_time.split(" ")[-1][:5]
+        body = (
+            t.get("talk", {}).get("text", "")
+            or t.get("question", {}).get("text", "")
+            or t.get("content", "")
+            or ""
+        )
+        topic_summaries.append({
+            "time": time_str,
+            "date": date_str,
+            "body": body,
+        })
+
     # ── Group by (month, date) ────────────────────
     grouped = defaultdict(lambda: defaultdict(list))
     for t in topics:
@@ -182,7 +200,7 @@ def run() -> None:
 
     elapsed = time.time() - start_time
     logger.info("=== 同步完成: %d 条帖子, 耗时 %.1f 秒 ===", total_synced, elapsed)
-    send_sync_summary(total_synced, state.get("current_doc_id", ""))
+    send_sync_summary(total_synced, state.get("current_doc_id", ""), topic_summaries)
 
     if os.path.exists(config.TEMP_DIR):
         shutil.rmtree(config.TEMP_DIR)

@@ -13,11 +13,6 @@ logger = logging.getLogger(__name__)
 
 def send_auth_error(detail: str = "") -> None:
     """Notify user that ZSXQ auth (MCP API key) has failed."""
-    webhook = config.FEISHU_BOT_WEBHOOK
-    if not webhook:
-        logger.warning("未配置 FEISHU_BOT_WEBHOOK，跳过通知")
-        return
-
     body = {
         "msg_type": "interactive",
         "card": {
@@ -41,16 +36,11 @@ def send_auth_error(detail: str = "") -> None:
             ],
         },
     }
-    _post(webhook, body)
+    _post_all(body)
 
 
 def send_error(message: str, doc_id: str = "") -> None:
     """Send a generic error notification."""
-    webhook = config.FEISHU_BOT_WEBHOOK
-    if not webhook:
-        logger.warning("未配置 FEISHU_BOT_WEBHOOK，跳过通知")
-        return
-
     run_url = ""
     github_server = os.environ.get("GITHUB_SERVER_URL", "")
     github_repo = os.environ.get("GITHUB_REPOSITORY", "")
@@ -64,26 +54,22 @@ def send_error(message: str, doc_id: str = "") -> None:
     if run_url:
         text += f"\n\n🔧 [查看日志]({run_url})"
 
-    _post(webhook, {
+    _post_all({
         "msg_type": "text",
         "content": {"text": text},
     })
 
 
-def send_sync_summary(new_count: int, doc_id: str) -> None:
-    """Send a success summary with document link."""
-    webhook = config.FEISHU_BOT_WEBHOOK
-    if not webhook:
-        return
+def send_sync_summary(new_count: int, doc_id: str,
+                      topic_summaries: list[dict] | None = None) -> None:
+    """Send sync summary (first) then per-topic cards to all webhooks."""
     if new_count == 0:
         return
 
     doc_url = f"https://larkcommunity.feishu.cn/docx/{doc_id}" if doc_id else ""
-    text = f"知识星球同步完成\n新增帖子：{new_count} 条"
-    if doc_url:
-        text += f"\n\n📄 [查看文档]({doc_url})"
 
-    _post(webhook, {
+    # 1. Summary card with @all
+    _post_all({
         "msg_type": "interactive",
         "card": {
             "header": {
@@ -98,9 +84,79 @@ def send_sync_summary(new_count: int, doc_id: str) -> None:
                         "content": f"新增 **{new_count}** 条帖子\n\n[📄 查看文档]({doc_url})" if doc_url else f"新增 **{new_count}** 条帖子",
                     },
                 },
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": "<at id=all></at>",
+                    },
+                },
             ],
         },
     })
+
+    # 2. Per-topic full content cards
+    if topic_summaries:
+        import time as _time
+        for i, ts in enumerate(topic_summaries):
+            if i > 0:
+                _time.sleep(0.5)
+
+            time_str = ts.get("time", "")
+            date_str = ts.get("date", "")
+            body_text = ts.get("body", "")
+
+            content = f"**{time_str}** {date_str}\n\n{body_text}"
+            if len(content) > 10000:
+                content = content[:10000] + "\n\n...[内容过长已截断]"
+
+            _post_all({
+                "msg_type": "interactive",
+                "card": {
+                    "header": {
+                        "title": {"tag": "plain_text", "content": f"{date_str} {time_str}"},
+                        "template": "blue",
+                    },
+                    "elements": [
+                        {
+                            "tag": "div",
+                            "text": {"tag": "lark_md", "content": content},
+                        },
+                        {
+                            "tag": "hr",
+                        },
+                        {
+                            "tag": "div",
+                            "text": {
+                                "tag": "lark_md",
+                                "content": f"[📄 查看完整内容]({doc_url})",
+                            },
+                        },
+                    ],
+                },
+            })
+
+
+def _get_webhooks() -> list[str]:
+    """Return all configured webhook URLs."""
+    hooks = list(config.FEISHU_BOT_WEBHOOKS)
+    if config.FEISHU_BOT_WEBHOOK and config.FEISHU_BOT_WEBHOOK not in hooks:
+        hooks.insert(0, config.FEISHU_BOT_WEBHOOK)
+    return hooks
+
+
+def _post_all(body: dict) -> None:
+    """Send to all configured webhooks."""
+    hooks = _get_webhooks()
+    if not hooks:
+        logger.warning("未配置任何 FEISHU_BOT_WEBHOOK，跳过通知")
+        return
+    for webhook in hooks:
+        try:
+            resp = requests.post(webhook, json=body, timeout=15)
+            resp.raise_for_status()
+        except Exception:
+            logger.warning("发送飞书通知失败 (webhook=%s...)", webhook[:50], exc_info=True)
 
 
 def _post(webhook: str, body: dict) -> None:
