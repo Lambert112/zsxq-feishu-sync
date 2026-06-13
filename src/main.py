@@ -94,11 +94,10 @@ def run() -> None:
         # ── Get or create month document ──
         try:
             if config.FORCE_FULL_SYNC and state.get("current_doc_id"):
-                doc_id = feishu_client.create_monthly_doc(year, month)
-                state["current_doc_id"] = doc_id
-                state["current_doc_month"] = month_key
+                doc_id = state["current_doc_id"]
+                feishu_client.clear_document(doc_id)
                 date_headers = {}
-                logger.info("全量同步：新建月文档 %s", doc_id)
+                logger.info("全量同步：清空已有文档 %s", doc_id)
             elif (state.get("current_doc_month") == month_key
                     and state.get("current_doc_id")):
                 doc_id = state["current_doc_id"]
@@ -200,7 +199,8 @@ def run() -> None:
 
     elapsed = time.time() - start_time
     logger.info("=== 同步完成: %d 条帖子, 耗时 %.1f 秒 ===", total_synced, elapsed)
-    send_sync_summary(total_synced, state.get("current_doc_id", ""), topic_summaries)
+    send_sync_summary(total_synced, state.get("current_doc_id", ""),
+                      topic_summaries, feishu_client)
 
     if os.path.exists(config.TEMP_DIR):
         shutil.rmtree(config.TEMP_DIR)

@@ -61,24 +61,29 @@ def send_error(message: str, doc_id: str = "") -> None:
 
 
 def send_sync_summary(new_count: int, doc_id: str,
-                      topic_summaries: list[dict] | None = None) -> None:
-    """Send sync summary (first) then per-topic cards to all webhooks."""
+                      topic_summaries: list[dict] | None = None,
+                      feishu_client=None) -> None:
+    """Send summary (with @all via IM API) then per-topic cards (via webhooks)."""
     if new_count == 0:
         return
 
     doc_url = f"https://larkcommunity.feishu.cn/docx/{doc_id}" if doc_id else ""
 
-    # 1. Summary — text message for @all support
+    # 1. Summary — use IM API for proper @all support
     text = f"知识星球同步完成\n新增 {new_count} 条帖子"
     if doc_url:
-        text += f"\n\n📄 查看文档: {doc_url}"
-    text += "\n\n<at id=all></at>"
-    _post_all({
-        "msg_type": "text",
-        "content": {"text": text},
-    })
+        text += f"\n📄 {doc_url}"
 
-    # 2. Per-topic full content cards
+    if feishu_client:
+        feishu_client.send_text_with_at_all(text)
+    else:
+        # Fallback: webhook text (no @all, but at least users see it)
+        _post_all({
+            "msg_type": "text",
+            "content": {"text": text},
+        })
+
+    # 2. Per-topic full content cards (webhooks work fine for these)
     if topic_summaries:
         import time as _time
         for i, ts in enumerate(topic_summaries):

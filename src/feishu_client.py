@@ -43,6 +43,30 @@ class FeishuClient:
         return self._token
 
     # ------------------------------------------------------------------
+    # IM messaging (for @all support, webhooks can't do it)
+    # ------------------------------------------------------------------
+
+    def send_text_with_at_all(self, text: str) -> bool:
+        """Send a text message with @all to all configured chat IDs."""
+        if not config.FEISHU_CHAT_IDS:
+            return False
+        import json as _json
+        content = _json.dumps({"text": f"<at id=all></at> {text}"}, ensure_ascii=False)
+        ok = False
+        for cid in config.FEISHU_CHAT_IDS:
+            try:
+                self._request(
+                    "POST",
+                    f"/im/v1/messages?receive_id_type=chat_id",
+                    body={"receive_id": cid, "msg_type": "text", "content": content},
+                )
+                logger.info("Sent @all message to chat %s", cid)
+                ok = True
+            except FeishuError as e:
+                logger.warning("IM @all failed (chat=%s): %s", cid, e)
+        return ok
+
+    # ------------------------------------------------------------------
     # HTTP helpers
     # ------------------------------------------------------------------
 
@@ -254,6 +278,26 @@ class FeishuClient:
                 break
             page_token = data.get("page_token", "")
         return children
+
+    def clear_document(self, document_id: str) -> None:
+        """Delete all children blocks from the page (keeps document alive)."""
+        page_id = self.get_page_block_id(document_id)
+        children = self.get_block_children(document_id, page_id)
+        if not children:
+            return
+        BATCH = 50
+        total = len(children)
+        logger.info("Clearing %d blocks from %s", total, document_id)
+        while total > 0:
+            start = max(0, total - BATCH)
+            self._request(
+                "DELETE",
+                f"/docx/v1/documents/{document_id}/blocks/{page_id}/children/batch_delete",
+                body={"start_index": start, "end_index": total},
+            )
+            if start > 0:
+                time.sleep(1)
+            total = start
 
     def delete_document(self, document_id: str) -> bool:
         """Delete a document entirely via Drive API."""

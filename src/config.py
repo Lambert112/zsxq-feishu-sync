@@ -35,6 +35,7 @@ FEISHU_FOLDER_TOKEN: str = _env("FEISHU_FOLDER_TOKEN")
 FEISHU_BASE_URL = "https://open.feishu.cn/open-apis"
 FEISHU_BOT_WEBHOOK: str = _env("FEISHU_BOT_WEBHOOK")
 FEISHU_BOT_WEBHOOKS: list[str] = [u for u in _env("FEISHU_BOT_WEBHOOKS").split(",") if u.strip()]
+FEISHU_CHAT_IDS: list[str] = [u for u in _env("FEISHU_CHAT_IDS").split(",") if u.strip()]
 FEISHU_USER_ID: str = _env("FEISHU_USER_ID")  # "open_id" or "user_id"
 
 # Sync
