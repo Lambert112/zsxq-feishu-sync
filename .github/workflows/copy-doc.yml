@@ -26,32 +26,43 @@ jobs:
 
           token_in='VduawSlAXiPaFskfPXpcIFFgnje'
 
-          # Step 1: Get wiki node info (token is a wiki_token)
-          print('Getting wiki node info...')
-          r_info=requests.get(f'{BASE}/wiki/v2/nodes/{token_in}',
-            headers=H, timeout=10)
-          di=r_info.json()
-          print(f'Node info: code={di.get(\"code\")}')
-          if di.get('code')==0:
-            node=di['data']['node']
-            real_token=node['node_token']
-            space_id=node['space_id']
-            print(f'  node_token={real_token}, space_id={space_id}, type={node.get(\"obj_type\")}')
-            # Step 2: Copy
-            print('Copying...')
-            r2=requests.post(f'{BASE}/wiki/v2/spaces/{space_id}/nodes/{real_token}/copy',
-              headers=H, json={'title':'知识星球 - 副本'},timeout=30)
+          # Try 1: drive/v1/files/copy?type=wiki_node
+          print('Trying drive copy...')
+          r=requests.post(f'{BASE}/drive/v1/files/{token_in}/copy?type=wiki_node',
+            headers=H, json={'name':'知识星球 - 副本'},timeout=30)
+          print(f'Drive wiki_node: code={r.status_code}, resp={r.text[:500]}')
+          try:
+            d=r.json()
+            if d.get('code')==0:
+              tok=d['data']['file']['token']
+              print(f'https://larkcommunity.feishu.cn/wiki/{tok}')
+          except: pass
+
+          # Try 2: drive/v1/files/copy?type=docx
+          r2=requests.post(f'{BASE}/drive/v1/files/{token_in}/copy?type=docx',
+            headers=H, json={'name':'知识星球 - 副本'},timeout=30)
+          print(f'Drive docx: code={r2.status_code}, resp={r2.text[:500]}')
+          try:
             d2=r2.json()
-            print(f'Copy result: Code={d2.get(\"code\")}, Msg={d2.get(\"msg\")}')
             if d2.get('code')==0:
-              nd=d2['data']['node']
-              print(f'https://larkcommunity.feishu.cn/wiki/{nd[\"node_token\"]}')
-          else:
-            # Fallback: docx copy
-            r3=requests.post(f'{BASE}/docx/v1/documents/{token_in}/copy',
-              headers=H, json={'title':'知识星球 - 副本'},timeout=30)
+              tok2=d2['data']['file']['token']
+              print(f'https://larkcommunity.feishu.cn/docx/{tok2}')
+          except: pass
+
+          # Try 3: wiki node copy
+          r3=requests.get(f'{BASE}/wiki/v2/nodes/{token_in}', headers=H, timeout=10)
+          print(f'Wiki node: code={r3.status_code}, resp={r3.text[:800]}')
+          try:
             d3=r3.json()
-            print(f'Docx result: Code={d3.get(\"code\")}, Msg={d3.get(\"msg\")}')
             if d3.get('code')==0:
-              print(f'https://larkcommunity.feishu.cn/docx/{d3[\"data\"][\"document\"][\"document_id\"]}')
+              nd=d3['data']['node']
+              r4=requests.post(f'{BASE}/wiki/v2/spaces/{nd[\"space_id\"]}/nodes/{token_in}/copy',
+                headers=H, json={'title':'知识星球 - 副本'},timeout=30)
+              print(f'Wiki copy: code={r4.status_code}, resp={r4.text[:500]}')
+              try:
+                d4=r4.json()
+                if d4.get('code')==0:
+                  print(f'https://larkcommunity.feishu.cn/wiki/{d4[\"data\"][\"node\"][\"node_token\"]}')
+              except: print(f'Raw: {r4.text[:500]}')
+          except: pass
           "
