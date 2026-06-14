@@ -1,0 +1,26 @@
+name: List Chats
+on: workflow_dispatch
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install requests
+      - run: |
+          python3 -c "
+          import requests,os
+          B='https://open.feishu.cn/open-apis'
+          r=requests.post(f'{B}/auth/v3/tenant_access_token/internal',
+            json={'app_id':os.environ['FID'],'app_secret':os.environ['FS']},timeout=10)
+          t=r.json()['tenant_access_token']
+          H={'Authorization':f'Bearer {t}'}
+          r2=requests.get(f'{B}/im/v1/chats?page_size=30',headers=H,timeout=10)
+          d=r2.json()
+          for c in d.get('data',{}).get('items',[]):
+            print(f\"{c['name']}  →  {c['chat_id']}\")
+          "
+        env:
+          FID: ${{ secrets.FEISHU_APP_ID }}
+          FS: ${{ secrets.FEISHU_APP_SECRET }}
