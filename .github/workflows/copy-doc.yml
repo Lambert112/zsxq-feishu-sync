@@ -1,0 +1,52 @@
+name: Copy Document
+on:
+  workflow_dispatch:
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install requests
+      - name: Copy wiki node
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+        run: |
+          python3 -c "
+          import requests
+          BASE='https://open.feishu.cn/open-apis'
+          r=requests.post(f'{BASE}/auth/v3/tenant_access_token/internal',
+            json={'app_id':'$FEISHU_APP_ID','app_secret':'$FEISHU_APP_SECRET'},timeout=10)
+          token=r.json()['tenant_access_token']
+          H={'Authorization':f'Bearer {token}','Content-Type':'application/json'}
+
+          # Try drive copy (works for both docx and wiki nodes)
+          token_in='VduawSlAXiPaFskfPXpcIFFgnje'
+          r2=requests.post(f'{BASE}/drive/v1/files/{token_in}/copy?type=docx',
+            headers=H, json={'name':'知识星球 - 副本'},timeout=30)
+          d=r2.json()
+          print(f'Code: {d.get(\"code\")}, Msg: {d.get(\"msg\")}')
+          if d.get('code')==0:
+            print(f'https://larkcommunity.feishu.cn/docx/{d[\"data\"][\"file\"][\"token\"]}')
+          else:
+            # Try wiki copy
+            r3=requests.post(f'{BASE}/wiki/v2/spaces/7160959790/nodes/{token_in}/copy',
+              headers=H, json={'title':'知识星球 - 副本'},timeout=30)
+            d3=r3.json()
+            print(f'Wiki copy: Code={d3.get(\"code\")}, Msg={d3.get(\"msg\")}')
+            if d3.get('code')==0:
+              nd=d3['data']['node']
+              print(f'https://larkcommunity.feishu.cn/wiki/{nd[\"node_token\"]}')
+            else:
+              # Last try: docx copy
+              r4=requests.post(f'{BASE}/docx/v1/documents/{token_in}/copy',
+                headers=H, json={'title':'知识星球 - 副本'},timeout=30)
+              d4=r4.json()
+              print(f'Docx copy: Code={d4.get(\"code\")}, Msg={d4.get(\"msg\")}')
+              if d4.get('code')==0:
+                print(f'https://larkcommunity.feishu.cn/docx/{d4[\"data\"][\"document\"][\"document_id\"]}')
+          "
