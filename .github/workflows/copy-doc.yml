@@ -26,29 +26,32 @@ jobs:
 
           token_in='VduawSlAXiPaFskfPXpcIFFgnje'
 
-          # Try wiki copy (since it's a wiki node)
-          print('Trying wiki copy...')
-          r2=requests.post(f'{BASE}/wiki/v2/spaces/7160959790/nodes/{token_in}/copy',
-            headers=H, json={'title':'知识星球 - 副本'},timeout=30)
-          d2=r2.json()
-          print(f'Wiki result: Code={d2.get(\"code\")}, Msg={d2.get(\"msg\")}')
-          if d2.get('code')==0:
-            nd=d2['data']['node']
-            print(f'https://larkcommunity.feishu.cn/wiki/{nd[\"node_token\"]}')
+          # Step 1: Get wiki node info (token is a wiki_token)
+          print('Getting wiki node info...')
+          r_info=requests.get(f'{BASE}/wiki/v2/nodes/{token_in}',
+            headers=H, timeout=10)
+          di=r_info.json()
+          print(f'Node info: code={di.get(\"code\")}')
+          if di.get('code')==0:
+            node=di['data']['node']
+            real_token=node['node_token']
+            space_id=node['space_id']
+            print(f'  node_token={real_token}, space_id={space_id}, type={node.get(\"obj_type\")}')
+            # Step 2: Copy
+            print('Copying...')
+            r2=requests.post(f'{BASE}/wiki/v2/spaces/{space_id}/nodes/{real_token}/copy',
+              headers=H, json={'title':'知识星球 - 副本'},timeout=30)
+            d2=r2.json()
+            print(f'Copy result: Code={d2.get(\"code\")}, Msg={d2.get(\"msg\")}')
+            if d2.get('code')==0:
+              nd=d2['data']['node']
+              print(f'https://larkcommunity.feishu.cn/wiki/{nd[\"node_token\"]}')
           else:
-            print('Wiki copy failed, try other methods...')
-            # Try drive copy
-            r3=requests.post(f'{BASE}/drive/v1/files/{token_in}/copy?type=docx',
-              headers=H, json={'name':'知识星球 - 副本'},timeout=30)
+            # Fallback: docx copy
+            r3=requests.post(f'{BASE}/docx/v1/documents/{token_in}/copy',
+              headers=H, json={'title':'知识星球 - 副本'},timeout=30)
             d3=r3.json()
-            print(f'Drive result: Code={d3.get(\"code\")}, Msg={d3.get(\"msg\")}')
+            print(f'Docx result: Code={d3.get(\"code\")}, Msg={d3.get(\"msg\")}')
             if d3.get('code')==0:
-              print(f'https://larkcommunity.feishu.cn/docx/{d3[\"data\"][\"file\"][\"token\"]}')
-            else:
-              r4=requests.post(f'{BASE}/docx/v1/documents/{token_in}/copy',
-                headers=H, json={'title':'知识星球 - 副本'},timeout=30)
-              d4=r4.json()
-              print(f'Docx result: Code={d4.get(\"code\")}, Msg={d4.get(\"msg\")}')
-              if d4.get('code')==0:
-                print(f'https://larkcommunity.feishu.cn/docx/{d4[\"data\"][\"document\"][\"document_id\"]}')
+              print(f'https://larkcommunity.feishu.cn/docx/{d3[\"data\"][\"document\"][\"document_id\"]}')
           "
