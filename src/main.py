@@ -266,9 +266,9 @@ def _ensure_doc_permission(feishu_client, state):
     if not doc_id:
         return
     try:
-        feishu_client.transfer_ownership(doc_id, config.FEISHU_USER_ID)
+        feishu_client.add_document_manager(doc_id, config.FEISHU_USER_ID)
     except Exception as e:
-        logger.warning("转移文档所有权失败: %s", e)
+        logger.warning("添加文档管理权限失败: %s", e)
 
 
 if __name__ == "__main__":
