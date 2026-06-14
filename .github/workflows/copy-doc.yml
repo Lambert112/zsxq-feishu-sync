@@ -24,29 +24,31 @@ jobs:
           token=r.json()['tenant_access_token']
           H={'Authorization':f'Bearer {token}','Content-Type':'application/json'}
 
-          # Try drive copy (works for both docx and wiki nodes)
           token_in='VduawSlAXiPaFskfPXpcIFFgnje'
-          r2=requests.post(f'{BASE}/drive/v1/files/{token_in}/copy?type=docx',
-            headers=H, json={'name':'知识星球 - 副本'},timeout=30)
-          d=r2.json()
-          print(f'Code: {d.get(\"code\")}, Msg: {d.get(\"msg\")}')
-          if d.get('code')==0:
-            print(f'https://larkcommunity.feishu.cn/docx/{d[\"data\"][\"file\"][\"token\"]}')
+
+          # Try wiki copy (since it's a wiki node)
+          print('Trying wiki copy...')
+          r2=requests.post(f'{BASE}/wiki/v2/spaces/7160959790/nodes/{token_in}/copy',
+            headers=H, json={'title':'知识星球 - 副本'},timeout=30)
+          d2=r2.json()
+          print(f'Wiki result: Code={d2.get(\"code\")}, Msg={d2.get(\"msg\")}')
+          if d2.get('code')==0:
+            nd=d2['data']['node']
+            print(f'https://larkcommunity.feishu.cn/wiki/{nd[\"node_token\"]}')
           else:
-            # Try wiki copy
-            r3=requests.post(f'{BASE}/wiki/v2/spaces/7160959790/nodes/{token_in}/copy',
-              headers=H, json={'title':'知识星球 - 副本'},timeout=30)
+            print('Wiki copy failed, try other methods...')
+            # Try drive copy
+            r3=requests.post(f'{BASE}/drive/v1/files/{token_in}/copy?type=docx',
+              headers=H, json={'name':'知识星球 - 副本'},timeout=30)
             d3=r3.json()
-            print(f'Wiki copy: Code={d3.get(\"code\")}, Msg={d3.get(\"msg\")}')
+            print(f'Drive result: Code={d3.get(\"code\")}, Msg={d3.get(\"msg\")}')
             if d3.get('code')==0:
-              nd=d3['data']['node']
-              print(f'https://larkcommunity.feishu.cn/wiki/{nd[\"node_token\"]}')
+              print(f'https://larkcommunity.feishu.cn/docx/{d3[\"data\"][\"file\"][\"token\"]}')
             else:
-              # Last try: docx copy
               r4=requests.post(f'{BASE}/docx/v1/documents/{token_in}/copy',
                 headers=H, json={'title':'知识星球 - 副本'},timeout=30)
               d4=r4.json()
-              print(f'Docx copy: Code={d4.get(\"code\")}, Msg={d4.get(\"msg\")}')
+              print(f'Docx result: Code={d4.get(\"code\")}, Msg={d4.get(\"msg\")}')
               if d4.get('code')==0:
                 print(f'https://larkcommunity.feishu.cn/docx/{d4[\"data\"][\"document\"][\"document_id\"]}')
           "
