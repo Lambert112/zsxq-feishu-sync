@@ -26,23 +26,16 @@ jobs:
 
           token_in='VduawSlAXiPaFskfPXpcIFFgnje'
 
-          # Transfer ownership via drive API
-          print('Transferring ownership...')
+          # Transfer ownership with type=wiki
+          print('Transferring ownership with type=wiki...')
           user_id='${{ secrets.FEISHU_USER_ID }}'
           member_type='openid' if user_id.startswith('ou_') else 'userid'
-          r=requests.post(f'{BASE}/drive/v1/permissions/{token_in}/members/transfer_owner?type=wiki_node',
+          r=requests.post(f'{BASE}/drive/v1/permissions/{token_in}/members/transfer_owner?type=wiki',
             headers=H, json={'member_type':member_type,'member_id':user_id},timeout=15)
-          print(f'Transfer wiki_node: code={r.status_code}, resp={r.text[:500]}')
-
-          r2=requests.post(f'{BASE}/drive/v1/permissions/{token_in}/members/transfer_owner?type=docx',
-            headers=H, json={'member_type':member_type,'member_id':user_id},timeout=15)
-          print(f'Transfer docx: code={r2.status_code}, resp={r2.text[:500]}')
-
-          r3=requests.post(f'{BASE}/drive/v1/permissions/{token_in}/members/transfer_owner?type=file',
-            headers=H, json={'member_type':member_type,'member_id':user_id},timeout=15)
-          print(f'Transfer file: code={r3.status_code}, resp={r3.text[:500]}')
-
-          r4=requests.post(f'{BASE}/drive/v1/permissions/{token_in}/members/transfer_owner',
-            headers=H, json={'member_type':member_type,'member_id':user_id},timeout=15)
-          print(f'Transfer no-type: code={r4.status_code}, resp={r4.text[:500]}')
+          print(f'Transfer wiki: code={r.status_code}, resp={r.text[:500]}')
+          try:
+            d=r.json()
+            if d.get('code')==0:
+              print('✅ 所有权转移成功!')
+          except: pass
           "
