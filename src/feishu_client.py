@@ -279,6 +279,21 @@ class FeishuClient:
             page_token = data.get("page_token", "")
         return children
 
+    def delete_blocks_range(self, document_id: str, start: int, end: int) -> bool:
+        """Delete a range of children blocks from the document page."""
+        try:
+            page_id = self.get_page_block_id(document_id)
+            self._request(
+                "DELETE",
+                f"/docx/v1/documents/{document_id}/blocks/{page_id}/children/batch_delete",
+                body={"start_index": start, "end_index": end},
+            )
+            logger.info("Deleted blocks [%d:%d] from %s", start, end, document_id)
+            return True
+        except FeishuError as e:
+            logger.warning("Failed to delete blocks [%d:%d]: %s", start, end, e)
+            return False
+
     def clear_document(self, document_id: str) -> None:
         """Delete all children blocks from the page (keeps document alive)."""
         page_id = self.get_page_block_id(document_id)
