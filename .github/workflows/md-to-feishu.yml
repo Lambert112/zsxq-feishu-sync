@@ -1,0 +1,52 @@
+name: Markdown to Feishu Document
+
+on:
+  workflow_dispatch:
+    inputs:
+      markdown_content:
+        description: '粘贴 Markdown 全文内容'
+        required: true
+        type: string
+      doc_title:
+        description: '飞书文档标题'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write markdown to file
+        run: |
+          echo '${{ toJSON(inputs.markdown_content) }}' > /tmp/content.json
+          python3 -c "
+          import json
+          with open('/tmp/content.json') as f:
+              content = json.load(f)
+          with open('/tmp/proposal.md', 'w') as f:
+              f.write(content)
+          "
+
+      - name: Convert and push to Feishu
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_FOLDER_TOKEN: ${{ secrets.FEISHU_FOLDER_TOKEN }}
+        run: |
+          python md_to_feishu.py /tmp/proposal.md "${{ inputs.doc_title }}"
