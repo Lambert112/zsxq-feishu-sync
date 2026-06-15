@@ -372,7 +372,7 @@ def main():
         print("🔗 正在连接飞书...")
         doc = feishu.create_document(doc_title)
         doc_id = doc["document"]["document_id"]
-        doc_url = doc["document"]["url"]
+        doc_url = doc["document"].get("url") or f"https://bytedance.feishu.cn/docx/{doc_id}"
         print(f"📃 文档已创建: {doc_url}")
 
         print("✍️  正在写入内容...")
