@@ -98,6 +98,7 @@ def run() -> None:
                 feishu_client.clear_document(doc_id)
                 date_headers = {}
                 state["file_summary_count"] = 0
+                state["file_summary"] = {}
                 logger.info("全量同步：清空已有文档 %s", doc_id)
             elif (state.get("current_doc_month") == month_key
                     and state.get("current_doc_id")):
@@ -109,6 +110,7 @@ def run() -> None:
                 state["current_doc_month"] = month_key
                 date_headers = {}
                 state["file_summary_count"] = 0
+                state["file_summary"] = {}
                 logger.info("新建月文档: %s", doc_id)
 
             _ensure_doc_permission(feishu_client, state)
@@ -218,35 +220,38 @@ def _build_file_summary(feishu_client, doc_id, date_groups, state):
     from . import zsxq_client as zsxq
     from .content_formatter import build_h2, build_text
 
-    all_files = []
-    seen = set()
+    # Collect files from THIS batch of topics
+    new_files = {}
     for d_str in date_groups:
         for t in date_groups[d_str]:
             for f in zsxq.extract_files(t):
                 name = f.get("name") or f.get("filename") or "file"
-                if name not in seen:
-                    seen.add(name)
-                    all_files.append(name)
+                if name not in new_files:
+                    new_files[name] = d_str
 
-    if not all_files:
+    # Merge with persisted state
+    all_file_dates = state.get("file_summary", {})
+    all_file_dates.update(new_files)  # newer dates overwrite older ones
+    state["file_summary"] = all_file_dates
+
+    if not all_file_dates:
         return
 
     blocks = [build_h2("📁 文件汇总")]
-    for name in sorted(all_files):
-        blocks.append(build_text(f"[文件类] {name}"))
+    for name in sorted(all_file_dates.keys()):
+        date_str = all_file_dates[name]
+        blocks.append(build_text(f"[文件类] [{date_str}] {name}"))
 
     new_total = len(blocks)
     old_total = state.get("file_summary_count", 0)
 
-    # Remove old summary blocks from document top
     if old_total > 0:
         feishu_client.delete_blocks_range(doc_id, 0, old_total)
 
-    # Insert new summary at index=0 (always on top)
     try:
         feishu_client.append_blocks(doc_id, blocks)
         state["file_summary_count"] = new_total
-        logger.info("文件汇总：%d 个文件", len(all_files))
+        logger.info("文件汇总：%d 个文件", len(all_file_dates))
     except Exception as e:
         logger.warning("文件汇总创建失败: %s", e)
 
