@@ -46,7 +46,8 @@ def parse_inline(text: str) -> list[dict]:
                 elements.append(text_run(plain))
 
         g = m.groups()
-        if g[0] is not None:  # ***bold italic***
+        # g[0] = outer alternation (always non-None), actual captures start at g[1]
+        if g[1] is not None:  # ***bold italic***
             elements.append(text_run(g[1], bold=True, italic=True))
         elif g[2] is not None:  # **bold**
             elements.append(text_run(g[2], bold=True))
