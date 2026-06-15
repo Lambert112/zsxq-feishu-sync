@@ -280,48 +280,28 @@ def _is_block_start(line: str) -> bool:
 
 
 def _parse_table(lines: list[str]) -> list[dict]:
-    """Convert Markdown table lines to a Feishu table block with nested cell children."""
+    """Convert Markdown table lines to formatted text blocks.
+
+    Note: Feishu children API doesn't support creating nested table cells in one request.
+    Table blocks require two-phase creation (table block first, then cell children).
+    For simplicity, we render tables as bold-header text rows.
+    """
     if len(lines) < 2:
         return [make_text_block(parse_inline(" ".join(lines)))]
 
     headers = _split_cells(lines[0])
     rows = [_split_cells(line) for line in lines[2:]]
-    all_rows = [headers] + rows
-    num_cols = max(len(r) for r in all_rows) if all_rows else 1
 
-    for r in all_rows:
-        while len(r) < num_cols:
-            r.append("")
+    result = []
+    for row_idx, row in enumerate([headers] + rows):
+        cell_texts = [c.strip() for c in row]
+        if row_idx == 0:
+            line = " | ".join(f"**{c}**" for c in cell_texts)
+        else:
+            line = " | ".join(cell_texts)
+        result.append(make_text_block(parse_inline(line)))
 
-    # Build table with inline children (Feishu API supports nested children in one request)
-    cell_children = []
-    for row in all_rows:
-        for cell_text in row:
-            # Each cell is a table_cell block containing a text block child
-            cell_children.append({
-                "block_type": 32,
-                "table_cell": {
-                    "children": [
-                        {
-                            "block_type": 2,
-                            "text": {"elements": parse_inline(cell_text.strip())},
-                        }
-                    ]
-                },
-            })
-
-    table_block = {
-        "block_type": 31,
-        "table": {
-            "property": {
-                "row_size": len(all_rows),
-                "column_size": num_cols,
-            },
-            "children": cell_children,
-        },
-    }
-
-    return [table_block]
+    return result
 
 
 def _split_cells(line: str) -> list[str]:
