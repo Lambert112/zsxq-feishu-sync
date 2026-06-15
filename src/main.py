@@ -87,6 +87,7 @@ def run() -> None:
     # ── Process each month ────────────────────────
     total_synced = 0
     date_headers = state.get("date_headers", {})
+    file_tokens = state.get("file_tokens", {})
 
     for (year, month), date_groups in sorted(grouped.items()):
         month_key = f"{year}-{month}"
@@ -99,6 +100,7 @@ def run() -> None:
                 date_headers = {}
                 state["file_summary_count"] = 0
                 state["file_summary"] = {}
+                file_tokens = {}
                 logger.info("全量同步：清空已有文档 %s", doc_id)
             elif (state.get("current_doc_month") == month_key
                     and state.get("current_doc_id")):
@@ -111,6 +113,7 @@ def run() -> None:
                 date_headers = {}
                 state["file_summary_count"] = 0
                 state["file_summary"] = {}
+                file_tokens = {}
                 logger.info("新建月文档: %s", doc_id)
 
             _ensure_doc_permission(feishu_client, state)
@@ -182,8 +185,10 @@ def run() -> None:
                         _refill_images(feishu_client, doc_id, created,
                                        ti, config.TEMP_DIR)
                     if tf:
-                        _refill_files(feishu_client, doc_id, created,
-                                      tf, config.TEMP_DIR, zsxq_client)
+                        new_tokens = _refill_files(feishu_client, doc_id, created,
+                                                  tf, config.TEMP_DIR, zsxq_client)
+                        if new_tokens:
+                            file_tokens.update(new_tokens)
                     synced_count += 1
                 except FeishuError as e:
                     logger.error("追加失败 (topic=%s): %s",
@@ -197,11 +202,12 @@ def run() -> None:
                 total_synced += synced_count
 
         # Build/update file summary at document top
-        _build_file_summary(feishu_client, doc_id, date_groups, state)
+        _build_file_summary(feishu_client, doc_id, date_groups, state, file_tokens)
 
     # ── Save state ────────────────────────────────
     if not config.DRY_RUN:
         state["last_sync_time"] = int(time.time())
+        state["file_tokens"] = file_tokens
         state_mgr.save_state(state)
 
     elapsed = time.time() - start_time
@@ -215,10 +221,10 @@ def run() -> None:
 
 # ── Helpers ──────────────────────────────────────────
 
-def _build_file_summary(feishu_client, doc_id, date_groups, state):
+def _build_file_summary(feishu_client, doc_id, date_groups, state, file_tokens=None):
     """Build '📁 文件汇总' H2 at document top every sync."""
     from . import zsxq_client as zsxq
-    from .content_formatter import build_h2, build_text
+    from .content_formatter import build_h2, build_text, build_file
 
     # Collect files from THIS batch of topics
     new_files = {}
@@ -238,9 +244,15 @@ def _build_file_summary(feishu_client, doc_id, date_groups, state):
         return
 
     blocks = [build_h2("📁 文件汇总")]
+    ft_map = file_tokens or {}
     for name in sorted(all_file_dates.keys()):
         date_str = all_file_dates[name]
-        blocks.append(build_text(f"[文件类] [{date_str}] {name}"))
+        token = ft_map.get(name, "")
+        if token:
+            blocks.append(build_text(f"[{date_str}] {name}"))
+            blocks.append(build_file(token, name))
+        else:
+            blocks.append(build_text(f"[文件类] [{date_str}] {name}"))
 
     new_total = len(blocks)
     old_total = state.get("file_summary_count", 0)
@@ -278,9 +290,10 @@ def _refill_images(feishu_client, doc_id, created_blocks, image_refs, temp_dir):
 
 def _refill_files(feishu_client, doc_id, created_blocks, file_refs, temp_dir, zsxq_client):
     from .content_formatter import _download_zsxq_file, _safe_remove
+    tokens = {}
     view_blocks = [b for b in created_blocks if b.get("block_type") == 33]
     if not view_blocks:
-        return
+        return tokens
     file_ids = []
     for vb in view_blocks:
         try:
@@ -291,7 +304,7 @@ def _refill_files(feishu_client, doc_id, created_blocks, file_refs, temp_dir, zs
         except FeishuError:
             pass
     if not file_ids:
-        return
+        return tokens
     logger.info("Refilling %d file blocks...", min(len(file_ids), len(file_refs)))
     for i, ref in enumerate(file_refs):
         if i >= len(file_ids):
@@ -305,6 +318,8 @@ def _refill_files(feishu_client, doc_id, created_blocks, file_refs, temp_dir, zs
         _safe_remove(local)
         if ft:
             feishu_client.replace_file(doc_id, bid, ft)
+            tokens[ref["filename"]] = ft
+    return tokens
 
 
 def _ensure_doc_permission(feishu_client, state):

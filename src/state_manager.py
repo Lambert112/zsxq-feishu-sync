@@ -52,4 +52,5 @@ def _default_state() -> dict:
         "date_headers": {},       # { "2026-06-11": "h3_block_id", ... }
         "file_summary_count": 0,  # total blocks in summary section (to batch-delete)
         "file_summary": {},       # { "filename": "2026-06-11", ... } persisted across syncs
+        "file_tokens": {},       # { "filename": "file_token", ... } for building file blocks
     }

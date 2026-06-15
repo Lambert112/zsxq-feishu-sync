@@ -66,4 +66,4 @@ def test_build_divider():
 def test_build_date_header_block():
     blocks = build_date_header_block("2026-05-26")
     assert len(blocks) == 1
-    assert blocks[0]["block_type"] == 3
+    assert blocks[0]["block_type"] == 5  # H3 heading
