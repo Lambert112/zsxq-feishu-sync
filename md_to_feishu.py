@@ -208,28 +208,31 @@ def md_to_blocks(md_text: str) -> list[dict]:
             i += 1
             continue
 
-        # --- Unordered list (- * +) ---
+        # --- Unordered list (- * +) — strip links to avoid schema issues ---
         ul_match = re.match(r'^(\s*)[-\\*+]\s+(.+)$', line)
         if ul_match:
             indent = len(ul_match.group(1))
             text = ul_match.group(2).strip()
+            text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
             blocks.append(make_bullet(parse_inline(text)))
             i += 1
             continue
 
-        # --- Ordered list (1. 2) etc.) ---
+        # --- Ordered list (1. 2) etc.) — strip links to avoid schema issues ---
         ol_match = re.match(r'^(\s*)\d+[.)]\s+(.+)$', line)
         if ol_match:
             text = ol_match.group(2).strip()
+            # Remove markdown links: [text](url) → text
+            text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
             blocks.append(make_ordered(parse_inline(text)))
             i += 1
             continue
 
-        # --- Blockquote (> text) ---
+        # --- Blockquote (> text) → plain text with prefix ---
         bq_match = re.match(r'^>\s?(.+)$', line)
         if bq_match:
             text = bq_match.group(1).strip()
-            blocks.append(make_quote(parse_inline(text)))
+            blocks.append(make_text_block(parse_inline(text)))
             i += 1
             continue
 
