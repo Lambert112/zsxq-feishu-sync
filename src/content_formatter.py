@@ -95,6 +95,13 @@ def build_h3(text: str) -> dict:
     }
 
 
+def build_h3(text: str) -> dict:
+    return {
+        "block_type": 5,
+        "heading3": {"elements": build_text_elements(text)},
+    }
+
+
 def build_text(text: str) -> dict:
     return {
         "block_type": 2,

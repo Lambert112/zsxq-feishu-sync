@@ -192,6 +192,10 @@ def run() -> None:
                 logger.info("已同步: %s, %d 条帖子", date_str, synced_count)
                 total_synced += synced_count
 
+        # Build file summary at top (full sync only — collects all files)
+        if config.FORCE_FULL_SYNC:
+            _build_file_summary(feishu_client, doc_id, date_groups)
+
     # ── Save state ────────────────────────────────
     if not config.DRY_RUN:
         state["last_sync_time"] = int(time.time())
@@ -207,6 +211,35 @@ def run() -> None:
 
 
 # ── Helpers ──────────────────────────────────────────
+
+def _build_file_summary(feishu_client, doc_id, date_groups):
+    """Create '📁 文件汇总' H3 section at document root with all file names."""
+    from . import zsxq_client as zsxq
+    from .content_formatter import build_h3, build_text
+
+    all_files = []
+    seen = set()
+    for d_str in date_groups:
+        for t in date_groups[d_str]:
+            for f in zsxq.extract_files(t):
+                name = f.get("name") or f.get("filename") or "file"
+                if name not in seen:
+                    seen.add(name)
+                    all_files.append(name)
+
+    if not all_files:
+        return
+
+    blocks = [build_h3("📁 文件汇总")]
+    for name in sorted(all_files):
+        blocks.append(build_text(f"[文件类] {name}"))
+
+    try:
+        feishu_client.append_blocks(doc_id, blocks)
+        logger.info("文件汇总：已添加 %d 个文件", len(all_files))
+    except Exception as e:
+        logger.warning("文件汇总创建失败: %s", e)
+
 
 def _refill_images(feishu_client, doc_id, created_blocks, image_refs, temp_dir):
     from .content_formatter import _download, _safe_remove
