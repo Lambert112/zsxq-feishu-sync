@@ -11,10 +11,10 @@ import re
 import sys
 import os
 
-# Add src to path so we can import the existing feishu client
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+# Import src.feishu_client — src must be importable as a package
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from feishu_client import FeishuClient, FeishuError
+from src.feishu_client import FeishuClient, FeishuError
 
 
 # ------------------------------------------------------------------
