@@ -33,6 +33,14 @@ def run() -> None:
     start_time = time.time()
 
     state = state_mgr.load_state()
+
+    # Reset state if group changed or state is from a different group
+    # (old states without group_id field also trigger reset)
+    if state.get("group_id") != config.ZSXQ_GROUP_ID:
+        logger.info("群组切换 (%s → %s)，重置同步状态",
+                    state.get("group_id"), config.ZSXQ_GROUP_ID)
+        state = state_mgr._default_state()
+
     last_sync_time = None if config.FORCE_FULL_SYNC else state.get("last_sync_time")
 
     zsxq_client = ZsxqClient()
@@ -191,8 +199,40 @@ def run() -> None:
                             file_tokens.update(new_tokens)
                     synced_count += 1
                 except FeishuError as e:
-                    logger.error("追加失败 (topic=%s): %s",
-                                 topic.get("topic_id", "?"), e)
+                    # H3 block may be stale (deleted or from previous group)
+                    if e.code == 1770002 and date_str in date_headers:
+                        logger.warning("H3 %s 已过期，重建中...", date_str)
+                        del date_headers[date_str]
+                        new_h3 = feishu_client.append_blocks(
+                            doc_id, build_date_header_block(date_str),
+                        )
+                        for b in new_h3:
+                            if b.get("block_type") == 5:
+                                h3_id = b["block_id"]
+                                date_headers[date_str] = h3_id
+                                state["date_headers"] = date_headers
+                                logger.info("H3 重建: %s → %s", date_str, h3_id)
+                                break
+                        if date_str in date_headers:
+                            try:
+                                created = feishu_client.append_blocks(
+                                    doc_id, tb, parent_block_id=h3_id,
+                                )
+                                if ti:
+                                    _refill_images(feishu_client, doc_id, created,
+                                                   ti, config.TEMP_DIR)
+                                if tf:
+                                    new_tokens = _refill_files(feishu_client, doc_id, created,
+                                                              tf, config.TEMP_DIR, zsxq_client)
+                                    if new_tokens:
+                                        file_tokens.update(new_tokens)
+                                synced_count += 1
+                            except FeishuError as e2:
+                                logger.error("重试追加仍失败 (topic=%s): %s",
+                                             topic.get("topic_id", "?"), e2)
+                    else:
+                        logger.error("追加失败 (topic=%s): %s",
+                                     topic.get("topic_id", "?"), e)
                     continue
 
                 time.sleep(0.5)
@@ -207,6 +247,7 @@ def run() -> None:
     # ── Save state ────────────────────────────────
     if not config.DRY_RUN:
         state["last_sync_time"] = int(time.time())
+        state["group_id"] = config.ZSXQ_GROUP_ID
         state["file_tokens"] = file_tokens
         state_mgr.save_state(state)
 

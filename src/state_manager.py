@@ -47,6 +47,7 @@ def update_sync_time(state: dict | None = None) -> dict:
 def _default_state() -> dict:
     return {
         "last_sync_time": None,
+        "group_id": None,          # detect group switch → auto-reset
         "current_doc_id": None,
         "current_doc_month": None,
         "date_headers": {},       # { "2026-06-11": "h3_block_id", ... }
