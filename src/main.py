@@ -33,14 +33,6 @@ def run() -> None:
     start_time = time.time()
 
     state = state_mgr.load_state()
-
-    # Reset state if group changed or state is from a different group
-    # (old states without group_id field also trigger reset)
-    if state.get("group_id") != config.ZSXQ_GROUP_ID:
-        logger.info("群组切换 (%s → %s)，重置同步状态",
-                    state.get("group_id"), config.ZSXQ_GROUP_ID)
-        state = state_mgr._default_state()
-
     last_sync_time = None if config.FORCE_FULL_SYNC else state.get("last_sync_time")
 
     zsxq_client = ZsxqClient()
@@ -247,7 +239,6 @@ def run() -> None:
     # ── Save state ────────────────────────────────
     if not config.DRY_RUN:
         state["last_sync_time"] = int(time.time())
-        state["group_id"] = config.ZSXQ_GROUP_ID
         state["file_tokens"] = file_tokens
         state_mgr.save_state(state)
 
