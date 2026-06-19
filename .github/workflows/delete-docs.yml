@@ -25,53 +25,60 @@ jobs:
           FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
         run: |
           python3 << 'PYEOF'
-          import requests, json, os
+          import json, os, urllib.request, urllib.error
 
           app_id = os.environ["FEISHU_APP_ID"]
           app_secret = os.environ["FEISHU_APP_SECRET"]
 
-          token_resp = requests.post(
-              "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
-              json={"app_id": app_id, "app_secret": app_secret}, timeout=15)
-          token = token_resp.json()["tenant_access_token"]
-          headers = {"Authorization": f"Bearer {token}"}
+          def req(method, url, body=None):
+              headers = {"Content-Type": "application/json; charset=utf-8"}
+              data = json.dumps(body).encode() if body else None
+              r = urllib.request.Request(url, data=data, headers=headers, method=method)
+              with urllib.request.urlopen(r, timeout=15) as resp:
+                  return json.load(resp)
 
-          # All known old doc IDs from this sync project
+          # Get token
+          token_data = req("POST",
+              "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+              {"app_id": app_id, "app_secret": app_secret})
+          token = token_data["tenant_access_token"]
+          print(f"Got token: {token[:10]}...")
+
+          # Delete known old docs
           doc_ids = [
               "LIDVddFO5oaYEZxt3H9cQP9bnof",   # old group
               "RdvXdC3tcoS6T8xmzvAcI3Xvn2e",   # current group (June 2026)
           ]
-
+          auth_header = {"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"}
           for did in doc_ids:
-              resp = requests.delete(
-                  f"https://open.feishu.cn/open-apis/drive/v1/files/{did}?type=docx",
-                  headers=headers, timeout=15)
-              data = resp.json()
-              code = data.get("code", -1)
-              msg = data.get("msg", "")
-              status = "DELETED" if code == 0 else f"FAILED [{code}] {msg}"
+              try:
+                  r = urllib.request.Request(
+                      f"https://open.feishu.cn/open-apis/drive/v1/files/{did}?type=docx",
+                      headers=auth_header, method="DELETE")
+                  with urllib.request.urlopen(r, timeout=15) as resp:
+                      data = json.load(resp)
+                  code = data.get("code", -1)
+                  msg = data.get("msg", "")
+                  status = "DELETED" if code == 0 else f"FAILED [{code}] {msg}"
+              except urllib.error.HTTPError as e:
+                  body = json.load(e) if e.fp else {}
+                  status = f"FAILED [{body.get('code', e.code)}] {body.get('msg', str(e))}"
               print(f"[{status}] {did}")
 
-          print("Done deleting all known docs.")
-          PYEOF
-
-      - name: Clear sync state
-        run: |
-          python3 -c "
-          import json
+          # Clear sync state
           state = {
-              'last_sync_time': None,
-              'current_doc_id': None,
-              'current_doc_month': None,
-              'date_headers': {},
-              'file_summary_count': 0,
-              'file_summary': {},
-              'file_tokens': {},
+              "last_sync_time": None,
+              "current_doc_id": None,
+              "current_doc_month": None,
+              "date_headers": {},
+              "file_summary_count": 0,
+              "file_summary": {},
+              "file_tokens": {},
           }
-          with open('sync_state.json', 'w') as f:
+          with open("sync_state.json", "w") as f:
               json.dump(state, f, ensure_ascii=False, indent=2)
-          print('sync_state.json reset')
-          "
+          print("sync_state.json reset")
+          PYEOF
 
       - name: Save cleared state
         uses: actions/cache/save@v4
