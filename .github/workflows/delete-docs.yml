@@ -48,6 +48,7 @@ jobs:
           doc_ids = [
               "LIDVddFO5oaYEZxt3H9cQP9bnof",   # old group
               "RdvXdC3tcoS6T8xmzvAcI3Xvn2e",   # current group (June 2026)
+              "Of6edQIZPoqfiuxDC82cQvNnnOa",   # extra doc to delete
           ]
           auth_header = {"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"}
           for did in doc_ids:
