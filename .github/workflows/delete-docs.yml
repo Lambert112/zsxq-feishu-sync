@@ -1,0 +1,80 @@
+name: Delete old sync documents
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Delete documents
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+        run: |
+          python3 << 'PYEOF'
+          import requests, json, os
+
+          app_id = os.environ["FEISHU_APP_ID"]
+          app_secret = os.environ["FEISHU_APP_SECRET"]
+
+          token_resp = requests.post(
+              "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+              json={"app_id": app_id, "app_secret": app_secret}, timeout=15)
+          token = token_resp.json()["tenant_access_token"]
+          headers = {"Authorization": f"Bearer {token}"}
+
+          # All known old doc IDs from this sync project
+          doc_ids = [
+              "LIDVddFO5oaYEZxt3H9cQP9bnof",   # old group
+              "RdvXdC3tcoS6T8xmzvAcI3Xvn2e",   # current group (June 2026)
+          ]
+
+          for did in doc_ids:
+              resp = requests.delete(
+                  f"https://open.feishu.cn/open-apis/drive/v1/files/{did}?type=docx",
+                  headers=headers, timeout=15)
+              data = resp.json()
+              code = data.get("code", -1)
+              msg = data.get("msg", "")
+              status = "DELETED" if code == 0 else f"FAILED [{code}] {msg}"
+              print(f"[{status}] {did}")
+
+          print("Done deleting all known docs.")
+          PYEOF
+
+      - name: Clear sync state
+        run: |
+          python3 -c "
+          import json
+          state = {
+              'last_sync_time': None,
+              'current_doc_id': None,
+              'current_doc_month': None,
+              'date_headers': {},
+              'file_summary_count': 0,
+              'file_summary': {},
+              'file_tokens': {},
+          }
+          with open('sync_state.json', 'w') as f:
+              json.dump(state, f, ensure_ascii=False, indent=2)
+          print('sync_state.json reset')
+          "
+
+      - name: Save cleared state
+        uses: actions/cache/save@v4
+        with:
+          path: sync_state.json
+          key: zsxq-sync-state-${{ secrets.ZSXQ_GROUP_ID }}-reset-${{ github.run_id }}
